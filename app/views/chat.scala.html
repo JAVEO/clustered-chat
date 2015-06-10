@@ -1,0 +1,47 @@
+@(user: String)(implicit request: play.api.mvc.RequestHeader, flash: Flash)
+
+@import views.html.elements.flashMessages
+@import views.html.elements.handlebars
+
+@main("Clustered chat") {
+    <div class="container">
+        @flashMessages(flash)
+        <div class="row">
+            <div class="col-xs-12">
+                <div id="conversation">
+                    <div class="messages-panel">
+                        <div id="messages">
+                        </div>
+                        @handlebars("message-on-left-template") {
+                            <p class="conversation_comment bold">{{{user}}}</p>
+                            <p class="conversation_comment">{{{message}}}</p>
+                        }
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div class="row">
+            <form id="msgform" class="form">
+                <div class="col-sm-10">
+                    <textarea id="comment" class="form-control" cols="50" rows="5" name="comment" maxlength="1000" autofocus></textarea>
+                </div>
+                <div class="col-sm-2">
+                    <button id="sendMessageButton" type="submit" class="btn btn-lg btn-primary">Send</button>
+                </div>
+            </form>
+        </div>
+        <div class="row">
+            <div class="col-sm-10">
+                User : @user
+            </div>
+            <div class="col-sm-2">
+                <a class="button-form-link" href="#">
+                    <span class="glyphicon glyphicon-log-out"></span> Leave chat
+                </a>
+                @helper.form(routes.Chat.leave, 'class -> "button-form"){
+                }
+            </div>
+        </div>
+    </div>
+}

@@ -1,0 +1,36 @@
+@(nickForm: Form[String])(implicit messages: Messages, flash: Flash)
+
+@import views.html.elements.flashMessages
+
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Clustered chat</title>
+        <meta charset="utf-8">
+        <link rel="stylesheet" media="screen" href="@routes.Assets.versioned("stylesheets/nickname.css")">
+        <link rel='stylesheet' href='@routes.WebJarAssets.at(WebJarAssets.locate("css/bootstrap.min.css"))'>
+        <script type='text/javascript' src='@routes.WebJarAssets.at(WebJarAssets.locate("jquery.min.js"))'></script>
+        <script type='text/javascript' src='@routes.Assets.versioned("javascripts/main.js")'></script>
+
+    </head>
+
+    <body>
+        <div class="container">
+            @flashMessages(flash)
+            <div class="row">
+                <div class="col-sm-6 col-md-4 col-md-offset-4">
+                    <h1 class="text-center login-title">Clustered chat demo</h1>
+                    <div class="account-wall">
+                        <img class="profile-img" src='@routes.Assets.versioned("images/photo.png")' alt="">
+                        <form action="@routes.Chat.nickname" class="form-signin" method="POST">
+                            @elements.formErrors(nickForm)
+                            <input type="text" class="form-control" placeholder="nickname" required autofocus name=@nickForm("nickname").name>
+                            <button class="btn btn-lg btn-primary btn-block" type="submit">Enter</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>
+
