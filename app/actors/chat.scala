@@ -33,7 +33,7 @@ class ChatRoomActor extends Actor with ActorLogging {
       users -= user
 
     case m: ChatMessage =>
-      users foreach { _ ! m }
+      users foreach { _ forward m }
       forwardToOtherClusterMembers(m)
 
     case MemberUp(member) =>
@@ -50,24 +50,15 @@ class ChatRoomActor extends Actor with ActorLogging {
 
   private[actors] def forwardToOtherClusterMembers(chatMessage: ChatMessage) = {
     def forwardToOtherClusterMembers(member: Member) =
-      context.actorSelection(RootActorPath(member.address) / "user" / "chat-room") ! chatMessage
+      context.actorSelection(RootActorPath(member.address) / "user" / "chat-room") forward chatMessage
+
+    def isLocal(actor: ActorRef) = actor.path.address.toString == context.system.toString
+
+    def otherClusterMembers = cluster.state.members.filterNot(_.address == cluster.selfAddress)
 
     if (isLocal(sender())) {
-      otherClusterMembers(Conf.clusterHostname, Conf.clusterPort) foreach forwardToOtherClusterMembers
+      otherClusterMembers foreach forwardToOtherClusterMembers
     }
-  }
-
-  private[actors] def isLocal(actor: ActorRef) = actor.path.address.toString == context.system.toString
-
-  private[actors] def otherClusterMembers(hostname: String, port: Int) = {
-    def sameHostname(member: Member): Boolean = {
-      member.address.host.getOrElse("127.0.0.1") == hostname
-    }
-    def samePort(member: Member): Boolean = {
-      member.address.port.getOrElse(0) == port
-    }
-
-    cluster.state.members.filterNot(member => sameHostname(member) && samePort(member))
   }
 }
 

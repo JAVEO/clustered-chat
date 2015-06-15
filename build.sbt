@@ -29,3 +29,5 @@ LessKeys.compress in Assets := true
 pipelineStages := Seq(digest)
 
 includeFilter in (Assets, LessKeys.less) := "*.less"
+
+javaOptions in Test ++= Seq("-Dlogger.resource=logback-test.xml")
