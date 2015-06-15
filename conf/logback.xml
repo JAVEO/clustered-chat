@@ -14,6 +14,12 @@
   -->
   <logger name="play" level="INFO" />
   <logger name="application" level="DEBUG" />
+  <logger name="akka" level="DEBUG" />
+  <logger name="actors" level="DEBUG" />
+
+  <logger name="akka.remote" level="WARN" />
+  <logger name="akka.cluster" level="WARN" />
+  <logger name="akka.serialization" level="WARN" />
 
   <root level="ERROR">
     <appender-ref ref="STDOUT" />
