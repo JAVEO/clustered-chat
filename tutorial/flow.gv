@@ -1,0 +1,73 @@
+digraph G {
+	bgcolor="transparent";
+
+	subgraph cluster_9001 {
+		node [style=filled]
+		subgraph cluster_A {
+			label = "user A"
+			browserA -> websocket_A [color = red, label="1.", fontcolor=red]
+			websocket_A -> browserA [color = red, label="5.", fontcolor=red]
+		}
+		label = "localhost:9001"
+		color=green
+
+		websocket_A -> chatRoom_9001 [color = red, label="2.", fontcolor=red]
+		chatRoom_9001 -> websocket_A [color = red, label="3.", fontcolor=red]
+	}
+
+	subgraph cluster_9002 {
+		node [style=filled]
+		subgraph cluster_B {
+			label = "user B"
+			browserB -> websocket_B
+			websocket_B -> browserB [color = red, label="5.", fontcolor=red]
+		}
+		subgraph cluster_C {
+			label = "user C"
+			browserC -> websocket_C
+			websocket_C -> browserC [color = red, label="5.", fontcolor=red]
+		}
+		subgraph cluster_D {
+			label = "user D"
+			browserD -> websocket_D
+			websocket_D -> browserD [color = red, label="5.", fontcolor=red]
+		}
+		label = "localhost:9002"
+		color=blue
+
+		websocket_B -> chatRoom_9002
+		chatRoom_9002 -> websocket_B [color = red, label="4.", fontcolor=red]
+		websocket_C -> chatRoom_9002
+		chatRoom_9002 -> websocket_C [color = red, label="4.", fontcolor=red]
+		websocket_D -> chatRoom_9002
+		chatRoom_9002 -> websocket_D [color = red, label="4.", fontcolor=red]
+	}
+
+	subgraph cluster_9003 {
+		node [style=filled]
+		subgraph cluster_E {
+			label = "user E"
+			browserE -> websocket_E
+			websocket_E -> browserE [color = red, label="5.", fontcolor=red]
+		}
+		subgraph cluster_F {
+			label = "user F"
+			browserF -> websocket_F
+			websocket_F -> browserF [color = red, label="5.", fontcolor=red]
+		}
+		label = "localhost:9003"
+		color=sienna
+
+		websocket_E -> chatRoom_9003
+		chatRoom_9003 -> websocket_E [color = red, label="4.", fontcolor=red]
+		websocket_F -> chatRoom_9003
+		chatRoom_9003 -> websocket_F [color = red, label="4.", fontcolor=red]
+	}
+
+	chatRoom_9001 -> chatRoom_9002 [constraint=false, color = red, label="3.", fontcolor=red]
+	chatRoom_9002 -> chatRoom_9001
+	chatRoom_9001 -> chatRoom_9003 [constraint=false, color = red, label="3.", fontcolor=red]
+	chatRoom_9003 -> chatRoom_9001
+	chatRoom_9002 -> chatRoom_9003
+	chatRoom_9003 -> chatRoom_9002 [constraint=false]
+}
