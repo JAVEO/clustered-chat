@@ -1,0 +1,73 @@
+digraph G {
+	bgcolor="transparent";
+
+	subgraph cluster_9001 {
+		node [style=filled]
+		subgraph cluster_A {
+			label = "user A"
+			browserA -> websocket_A
+			websocket_A -> browserA
+		}
+		label = "localhost:9001"
+		color=green
+
+		websocket_A -> chatRoom_9001
+		chatRoom_9001 -> websocket_A
+	}
+
+	subgraph cluster_9002 {
+		node [style=filled]
+		subgraph cluster_B {
+			label = "user B"
+			browserB -> websocket_B
+			websocket_B -> browserB
+		}
+		subgraph cluster_C {
+			label = "user C"
+			browserC -> websocket_C
+			websocket_C -> browserC
+		}
+		subgraph cluster_D {
+			label = "user D"
+			browserD -> websocket_D
+			websocket_D -> browserD
+		}
+		label = "localhost:9002"
+		color=blue
+
+		websocket_B -> chatRoom_9002
+		chatRoom_9002 -> websocket_B
+		websocket_C -> chatRoom_9002
+		chatRoom_9002 -> websocket_C
+		websocket_D -> chatRoom_9002
+		chatRoom_9002 -> websocket_D
+	}
+
+	subgraph cluster_9003 {
+		node [style=filled]
+		subgraph cluster_E {
+			label = "user E"
+			browserE -> websocket_E
+			websocket_E -> browserE
+		}
+		subgraph cluster_F {
+			label = "user F"
+			browserF -> websocket_F
+			websocket_F -> browserF
+		}
+		label = "localhost:9003"
+		color=sienna
+
+		websocket_E -> chatRoom_9003
+		chatRoom_9003 -> websocket_E
+		websocket_F -> chatRoom_9003
+		chatRoom_9003 -> websocket_F
+	}
+
+	chatRoom_9001 -> chatRoom_9002 [constraint=false]
+	chatRoom_9002 -> chatRoom_9001
+	chatRoom_9001 -> chatRoom_9003 [constraint=false]
+	chatRoom_9003 -> chatRoom_9001
+	chatRoom_9002 -> chatRoom_9003
+	chatRoom_9003 -> chatRoom_9002 [constraint=false]
+}

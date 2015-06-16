@@ -1,0 +1,7 @@
+digraph finite_state_machine {
+	rankdir=LR;
+	bgcolor="transparent";
+	node [shape = circle];
+	index -> chat [ label = "nickname" ];
+	chat -> index [ label = "leave" ];
+}
