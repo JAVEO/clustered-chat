@@ -8,7 +8,7 @@
     <div>
         <h2>Clustered chat</h2>
         <p>
-            The purpose of this application is to illustrate using web sockets for communication between cluster nodes.
+            The purpose of this application is to illustrate how to use web sockets for communication between cluster nodes.
         </p>
     </div>
 
@@ -17,10 +17,11 @@
 
         <img src="tutorial/application.png">
         <p>
-            To meet our purpose we have two pages within application.
+            To meet our purpose we have two pages within the application.
             The first one is home/index page. After opening a home/index page
             you will see a simple form for defining your nickname. To transit to chat page, you should fill in the form.
-            To transit back to home page, you should leave a chat. The chat messages are transferred through active web socket.
+            To transit back to home page, you should press the leave chat link to exit the chat page.
+            The chat messages are transferred through the active web socket.
         </p>
     </div>
 
@@ -39,10 +40,10 @@
 
         <p>
             To demonstrate the communication between nodes we will start three Play app instances.
-            We will start first Play application node on port 9001. The port 2551 will be used to remote communication.
+            We will start the first Play application node on port 9001. The port 2551 will be used for remote communication.
             The second one will be started on port 9002 with port 2552 for remoting, and the last one on port 9003 and port 2553 respectively.
 
-            To gain this aim you should run the following commands :
+            To achieve this aim you should run the following commands :
             <ul>
                 <li><code>activator -Dhttp.port=9001 -Dakka.remote.netty.tcp.port=2551 run</code></li>
                 <li><code>activator -Dhttp.port=9002 -Dakka.remote.netty.tcp.port=2552 run</code></li>
@@ -51,9 +52,9 @@
         </p>
 
         <p>
-            Note that there is a user's nickname stored in cookie, so you could have one active session per browser.
+            Note that there is a user's nickname stored in a cookie, so you can only have one active session per browser.
             You should open applications in different browsers (use private/incognito browser mode as well).
-            After running please open three browsers with <a href="http://localhost:9001">localhost:9001</a>, <a href="http://localhost:9002">localhost:9002</a>
+            After running, please open three browsers with <a href="http://localhost:9001">localhost:9001</a>, <a href="http://localhost:9002">localhost:9002</a>
             and  <a href="http://localhost:9003">localhost:9003</a>
         </p>
 
@@ -62,7 +63,7 @@
             An Akka cluster needs some time to discover all members of the cluster,
             so there is a short delay between the startup and interchanging messages among those nodes.
             You can verify the correctness of running by searching log output for "Member is Up" text.
-            To make sure your three nodes become members there should be something like this
+            To make sure your three nodes have become members there should be something like this in the log output
             <pre><code>
     [info] - actors.ChatRoomActor - Member is Up: akka.tcp://application@127.0.0.1:2551
     [info] - actors.ChatRoomActor - Member is Up: akka.tcp://application@127.0.0.1:2552
@@ -79,40 +80,40 @@
 
         <img src="tutorial/chat.png">
         <p>
-            Imagine that we have few users - named A, B, until F. The user A is connected to host on port 9001.
-            The users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
+            Imagine that we have a few users - named A-F. The user A is connected to host on port 9001.
+            Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
             This diagram shows the communication channels between actors.
         </p>
         <p>
-            The whole chat logic within browser is being done by <a href="#code/app/assets/javascripts/chat.coffee" class="shortcut">chat.coffee</a>.
+            The whole chat logic within the browser is being done by <a href="#code/app/assets/javascripts/chat.coffee" class="shortcut">chat.coffee</a>.
             We use <a href="http://coffeescript.org/">coffeescript</a>, because the code is concise.
             Moreover, we use <code>sbt-coffeescript</code> plugin (take a look at : <a href="#code/project/plugins.sbt" class="shortcut">plugins.sbt</a>)
             which compiles CoffeeScript sources to JavaScript for us.
         </p>
         <p>
             Each user has his own opened websocket serviced by <a href="#code/app/actors/UserSocketActor.scala" class="shortcut">UserSocketActor.scala</a>.
-            The <code>UserSocketActor</code> receives <code>play.api.libs.json.JSValue</code> messages from user's browser, parses it and eventually
+            The <code>UserSocketActor</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's browser, parses it and eventually
             it sends a <code>ChatMessage(user: String, text: String)</code> to the next <a href="#code/app/actors/chat.scala" class="shortcut">ChatRoomActor.scala</a>
 
-            During creation of <code>UserSocketActor</code>, it registers to <code>ChatRoomActor</code> by sending <code>Subscribe</code> message.
-            From this time <code>ChatRoomActor</code> knows about new user, register him and start to watch his lifecycle.
-            Especially, <code>ChatRoomActor</code> will receive a Terminated(subject) message when watched actor will be terminated.
+            During the creation of a <code>UserSocketActor</code>, it registers to the <code>ChatRoomActor</code> by sending a <code>Subscribe</code> message.
+            From this time the <code>ChatRoomActor</code> knows about a new user, registers him and starts to watch his lifecycle.
+            Especially, a <code>ChatRoomActor</code> will receive a Terminated(subject) message when the watched actor is terminated.
         </p>
         <p>
-            The <code>ChatRoomActor</code> is responsible for forwarding <code>ChatMessage</code>s to own users
-            and to other <code>ChatRoomActor</code>s run on other nodes if it is a chat message from own user.
+            The <code>ChatRoomActor</code> is responsible for forwarding <code>ChatMessage</code>s to its own users
+            and to other <code>ChatRoomActor</code>s run on other nodes if it is a chat message from its own user.
         </p>
 
         <h3>Flow of messages</h3>
         <img src="tutorial/flow.png">
         <p>
-        These steps show how chat message which is sent by user A from 9001 instance is broadcasted to all participants.
+        These steps show how a chat message which is sent by user A from 9001 instance is broadcasted to all participants.
         <ol>
-            <li>user <b>A</b> defines and sends message, the corresponding <code>UserSocketActor</code> receives it</li>
+            <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocketActor</code> receives it</li>
             <li><b>A</b>'s <code>UserSocketActor</code> parses the message and sends to node <b>9001</b>'s <code>ChatRoomActor</code></li>
-            <li>node <b>9001</b>'s <code>ChatRoomActor</code> sends message to <b>A</b>'s <code>UserSocketActor</code> and to the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s</li>
-            <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s sends message to users' <code>UserSocketActor</code>s</li>
-            <li>eventually, each <code>UserSocketActor</code> sends message to browser where it is shown</li>
+            <li>node <b>9001</b>'s <code>ChatRoomActor</code> sends the message to <b>A</b>'s <code>UserSocketActor</code> and to the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s</li>
+            <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s sends the message to its users' <code>UserSocketActor</code>s</li>
+            <li>eventually, each <code>UserSocketActor</code> sends a message to the browser where it is shown</li>
         </ol>
         </p>
     </div>
