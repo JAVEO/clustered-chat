@@ -2,7 +2,7 @@ package controllers
 
 import javax.inject._
 
-import actors.{UserSocket, ChatRoom, UserSocket$}
+import actors.{UserSocket, ChatRoom}
 import akka.actor._
 import play.api.Play.current
 import play.api.data.Form
