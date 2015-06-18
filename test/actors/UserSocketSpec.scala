@@ -1,6 +1,7 @@
 package actors
 
-import actors.UserSocketActor.Message
+import actors.ChatRoom.{ChatMessage, Subscribe}
+import actors.UserSocket.Message
 import akka.actor._
 import akka.testkit.TestProbe
 import org.specs2.mutable._
@@ -8,15 +9,15 @@ import play.api.libs.json._
 
 import scala.language.postfixOps
 
-class UserSocketActorSpec extends Specification {
+class UserSocketSpec extends Specification {
   val UserId = "user1"
 
-  "A user socket actor" should {
+  "A user socket" should {
     "send Subscribe to room" in new AkkaTestkitSpecs2Support {
       val room = TestProbe()
       val browser = TestProbe()
 
-      val socket = system.actorOf(UserSocketActor.props(room.ref, "user1")(browser.ref), "userSocket")
+      val socket = system.actorOf(UserSocket.props(room.ref, "user1")(browser.ref), "userSocket")
 
       room.expectMsg(Subscribe)
     }
@@ -27,7 +28,7 @@ class UserSocketActorSpec extends Specification {
       val room = TestProbe()
       room.ignoreMsg({ case Subscribe => true })
       val browser = TestProbe()
-      val socket = system.actorOf(UserSocketActor.props(room.ref, UserId)(browser.ref), "userSocket")
+      val socket = system.actorOf(UserSocket.props(room.ref, UserId)(browser.ref), "userSocket")
       val message = "message from browser"
 
       socket ! Json.toJson(Message(message))
@@ -39,7 +40,7 @@ class UserSocketActorSpec extends Specification {
       val room = TestProbe()
       room.ignoreMsg({ case Subscribe => true })
       val browser = TestProbe()
-      val socket = system.actorOf(UserSocketActor.props(room.ref, UserId)(browser.ref), "userSocket")
+      val socket = system.actorOf(UserSocket.props(room.ref, UserId)(browser.ref), "userSocket")
       val chatMessage = ChatMessage(UserId, "There is important thing to do!")
 
       socket ! chatMessage

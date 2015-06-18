@@ -65,9 +65,9 @@
             You can verify the correctness of running by searching log output for "Member is Up" text.
             To make sure your three nodes have become members there should be something like this in the log output
             <pre><code>
-    [info] - actors.ChatRoomActor - Member is Up: akka.tcp://application@127.0.0.1:2551
-    [info] - actors.ChatRoomActor - Member is Up: akka.tcp://application@127.0.0.1:2552
-    [info] - actors.ChatRoomActor - Member is Up: akka.tcp://application@127.0.0.1:2553
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2551
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2552
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2553
             </code></pre>
         </p>
         <p>
@@ -91,17 +91,17 @@
             which compiles CoffeeScript sources to JavaScript for us.
         </p>
         <p>
-            Each user has his own opened websocket serviced by <a href="#code/app/actors/UserSocketActor.scala" class="shortcut">UserSocketActor.scala</a>.
-            The <code>UserSocketActor</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's browser, parses it and eventually
-            it sends a <code>ChatMessage(user: String, text: String)</code> to the next <a href="#code/app/actors/chat.scala" class="shortcut">ChatRoomActor.scala</a>
+            Each user has his own opened websocket serviced by <a href="#code/app/actors/UserSocket.scala" class="shortcut">UserSocket.scala</a>.
+            The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's browser, parses it and eventually
+            it sends a <code>ChatMessage(user: String, text: String)</code> to the next <a href="#code/app/actors/ChatRoom.scala" class="shortcut">ChatRoom.scala</a>
 
-            During the creation of a <code>UserSocketActor</code>, it registers to the <code>ChatRoomActor</code> by sending a <code>Subscribe</code> message.
-            From this time the <code>ChatRoomActor</code> knows about a new user, registers him and starts to watch his lifecycle.
-            Especially, a <code>ChatRoomActor</code> will receive a Terminated(subject) message when the watched actor is terminated.
+            During the creation of a <code>UserSocket</code>, it registers to the <code>ChatRoom</code> by sending a <code>Subscribe</code> message.
+            From this time the <code>ChatRoom</code> knows about a new user, registers him and starts to watch his lifecycle.
+            Especially, a <code>ChatRoom</code> will receive a Terminated(subject) message when the watched actor is terminated.
         </p>
         <p>
-            The <code>ChatRoomActor</code> is responsible for forwarding <code>ChatMessage</code>s to its own users
-            and to other <code>ChatRoomActor</code>s run on other nodes if it is a chat message from its own user.
+            The <code>ChatRoom</code> is responsible for forwarding <code>ChatMessage</code>s to its own users
+            and to other <code>ChatRoom</code>s run on other nodes if it is a chat message from its own user.
         </p>
 
         <h3>Flow of messages</h3>
@@ -109,11 +109,11 @@
         <p>
         These steps show how a chat message which is sent by user A from 9001 instance is broadcasted to all participants.
         <ol>
-            <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocketActor</code> receives it</li>
-            <li><b>A</b>'s <code>UserSocketActor</code> parses the message and sends to node <b>9001</b>'s <code>ChatRoomActor</code></li>
-            <li>node <b>9001</b>'s <code>ChatRoomActor</code> sends the message to <b>A</b>'s <code>UserSocketActor</code> and to the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s</li>
-            <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoomActor</code>s sends the message to its users' <code>UserSocketActor</code>s</li>
-            <li>eventually, each <code>UserSocketActor</code> sends a message to the browser where it is shown</li>
+            <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocket</code> receives it</li>
+            <li><b>A</b>'s <code>UserSocket</code> parses the message and sends to node <b>9001</b>'s <code>ChatRoom</code></li>
+            <li>node <b>9001</b>'s <code>ChatRoom</code> sends the message to <b>A</b>'s <code>UserSocket</code> and to the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoom</code>s</li>
+            <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoom</code>s sends the message to its users' <code>UserSocket</code>s</li>
+            <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is shown</li>
         </ol>
         </p>
     </div>

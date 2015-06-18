@@ -1,21 +1,35 @@
 package actors
 
-import javax.inject.Singleton
-
+import actors.ChatRoom.{ChatMessage, Subscribe}
 import akka.actor._
-import akka.cluster.{Member, Cluster}
-import akka.cluster.ClusterEvent.InitialStateAsEvents
-import akka.cluster.ClusterEvent.MemberEvent
-import akka.cluster.ClusterEvent.MemberRemoved
-import akka.cluster.ClusterEvent.MemberUp
-import akka.cluster.ClusterEvent.UnreachableMember
+import akka.cluster.ClusterEvent.{InitialStateAsEvents, MemberEvent, MemberRemoved, MemberUp, UnreachableMember}
+import akka.cluster.{Cluster, Member}
 import akka.event.LoggingReceive
-import controllers.Conf
 import play.api.libs.json.{JsValue, Json, Writes}
 import play.twirl.api.HtmlFormat
 
-@Singleton
-class ChatRoomActor extends Actor with ActorLogging {
+object ChatRoom {
+  case class ChatMessage(user: String, text: String)
+  object Subscribe
+
+  object ChatMessage {
+    implicit val chatMessageWrites = new Writes[ChatMessage] {
+      def writes(chatMessage: ChatMessage): JsValue = {
+        Json.obj(
+          "type" -> "message",
+          "user" -> chatMessage.user,
+          "text" -> multiLine(chatMessage.text)
+        )
+      }
+    }
+
+    private def multiLine(text: String) = {
+      HtmlFormat.raw(text).body.replace("\n", "<br/>")
+    }
+  }
+}
+
+class ChatRoom extends Actor with ActorLogging {
   val cluster = Cluster(context.system)
 
   var users = Set[ActorRef]()
@@ -62,21 +76,3 @@ class ChatRoomActor extends Actor with ActorLogging {
   }
 }
 
-case class ChatMessage(user: String, text: String)
-
-object ChatMessage {
-  implicit val chatMessageWrites = new Writes[ChatMessage] {
-    def writes(chatMessage: ChatMessage): JsValue = {
-      Json.obj(
-        "type" -> "message",
-        "user" -> chatMessage.user,
-        "text" -> multiLine(chatMessage.text)
-      )
-    }
-  }
-
-  private def multiLine(text: String) = {
-    HtmlFormat.raw(text).body.replace("\n", "<br/>")
-  }
-}
-object Subscribe

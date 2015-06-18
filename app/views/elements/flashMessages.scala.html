@@ -1,23 +1,14 @@
 @(flash: Flash)
 
-@flash.get("error").map { message =>
-    <div class="alert alert-danger">
-        @message
-    </div>
-}
-@flash.get("warning").map { message =>
-    <div class="alert alert-warning">
-        @message
-    </div>
-}
+@flashMessage("error")
+@flashMessage("warning")
+@flashMessage("success")
+@flashMessage("info")
 
-@flash.get("success").map { message =>
-    <div class="alert alert-success">
-        @message
-    </div>
-}
-@flash.get("info").map { message =>
-    <div class="alert alert-info">
-        @message
-    </div>
+@flashMessage(flashType: String) = {
+    @flash.get(flashType).map { message =>
+        <div class="alert alert-@flashType">
+            @message
+        </div>
+    }
 }
