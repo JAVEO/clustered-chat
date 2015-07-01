@@ -10,7 +10,7 @@
 
     <p>
         The purpose of this activator template is to illustrate how a horizontally scalable, reactive architecture with
-        websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a href="http://akka.io/">Akka</a> with<a
+        websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a href="http://akka.io/">Akka</a> with <a
             href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a>.
     </p>
 </div>
@@ -61,8 +61,8 @@
 
     <p>
         Interesting challenge emerges when you decide to scale out your backend by adding server instances
-        and require to maintain message distribution between these nodes and ensure their delivery to all clients,
-        regardless of their connection to a particular cluster node.
+        and require to maintain message distribution between these nodes ensuring their delivery to all clients,
+        regardless of their connection to one particular cluster node.
 
         In such scenario <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> comes to
         rescue by enabling distribution of messages among server instances within the cluster.
@@ -234,7 +234,7 @@
     <p>
         Let's play a scenario with six users - named A-F. The user A is connected to host on port 9001.
         Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
-        The diagram shows communication channels between actors.
+        The diagram shows message flow between actors and nodes.
     </p>
 
     <p>The <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> feature is leveraged to
@@ -263,9 +263,9 @@
         In this example application we have demonstrated how a message driven web application using <code>websockets</code> can be
         implemented with <a href="http://akka.io/">Akka</a> and scaled out thanks to <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> at it's core.
 
-        The application is a good starting point if you want to build a scalable and resilient cluster of <code>websocket</code> services since it can be easily applied to different use cases and extended.
+        The application is a good starting point if you want to build a scalable and resilient cluster of <code>websocket</code> services.
 
-        By adding cluster management facilities, from simple load balancing (eg. with use <a href="http://www.haproxy.org/">HA Proxy</a>) to a complete (micro)service manager solution like <a href="http://www.typesafe.com/products/conductr">ConductR</a> or
+        By adding cluster management facilities, whether simple load balancing (eg. with use <a href="http://www.haproxy.org/">HA Proxy</a>) or a complete (micro)service manager solution like <a href="http://www.typesafe.com/products/conductr">ConductR</a> or
         <a href="http://kubernetes.io/">Kubernetes</a> if you like Docker, you will get a complete, managed, scalable and reactive cluster of websocket services servicing the frontend.
     </p>
 </div>
