@@ -9,148 +9,208 @@
     <h2>Reactive chat application with Play, Akka Cluster and Websockets</h2>
 
     <p>
-        The purpose of this application is to illustrate how a horizontally scalable, reactive architecture with
-        websockets can be implemented with use of <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a>.
+        The purpose of this activator template is to illustrate how a horizontally scalable, reactive architecture with
+        websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a href="http://akka.io/">Akka</a> with<a
+            href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a>.
     </p>
 </div>
 
 <div>
-    <h2>The Challenge</h2>
+    <h2>Challenge</h2>
 
     <p>
-        <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> is a technology to enable bi-directional
+        <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> are a protocol to enable bi-directional
         communication between user's browser and the server.
-        With this technology you can send messages to the server and receive them independently from HTTP
-        Request/Response cycle.
-        As you might suspect Akka is the perfect technology to handle and produce such messages asynchronously on the server side.
+        With use of websockets you can send messages to the server and receive them independently from HTTP
+        request/response cycle. Websockets are a powerful protocol and are reshaping the web by enabling truly
+        responsive and real-time like user experience, eliminating the need for extra browser plugins (eg. Applet,
+        Flash) or workarounds (remember Comet?).
 
+        Common use cases of such communication mechanism include:
+    <ul>
+        <li>Chats, instant messangers</li>
+        <li>Bidding platforms</li>
+        <li>Multi-player games</li>
+        <li>Various forms of on-line data broadcasting</li>
+    </ul>
+
+    While on the client side the answer is clear how to implement async communications with HTML5, you have boundless options on the server side.
+    This gives you one good option.
+
+    By going through this tutorial you will learn how to:
+    <ul>
+        <li>Create asynchronous message channels in your web pages with use of websockets.</li>
+        <li>Tie websocket connections to a reactive, scalable backend.</li>
+        <li>Implement the backend in a distributed, message driven manner where messages are forwarded to all cluster
+            nodes.
+        </li>
+    </ul>
+    Read on.
     </p>
 
+    <h2>Solution</h2>
+
+    You might wonder about best patterns and blend of technologies to implement such communication
+    This application aims to be a blueprint of such implementation based on the core elements of the <a
+        href="http://www.typesafe.com/products/typesafe-reactive-platform">Typesafe Reactive Platform</a>:
+    <ul>
+        <li>Play Framework</li>
+        <li>Akka</li>
+        <li>Scala</li>
+    </ul>
+
     <p>
-        Things start to get interesting when you decide to scale out by adding server instances
-        and require to maintain message distribution between these nodes.
+        Interesting challenge emerges when you decide to scale out your backend by adding server instances
+        and require to maintain message distribution between these nodes and ensure their delivery to all clients,
+        regardless of their connection to a particular cluster node.
 
         In such scenario <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> comes to
-        rescue by enabling the distribution of messages among server instances within the cluster.
+        rescue by enabling distribution of messages among server instances within the cluster.
+    </p>
 
+    <p>
         Let's build an example application that demonstrates such use case.
+        We chose to exhibit this architecture by implementing a chat web application scenario.
     </p>
 </div>
 
 <div>
-    <h2>The exhibit</h2>
+    <h2>Frontend</h2>
 
     <img src="tutorial/application.png">
 
     <p>
-        We chose to exhibit this architecture by implementing a basic chat application scenario.
-        The application includes two web pages.
-        The first one is home/index page.
+        The web application includes two web pages. The first one is home/index page.
         After opening a home/index page you will see a simple form to define your nickname.
         To go further to chat page, you should fill out the form and submit it.
         To go back to home page, you should press the `leave chat` link to exit the chat page.
         All chat messages are transferred through an active web socket.
     </p>
+
+    <p>
+        The whole client side chat logic is implemented within <a href="#code/app/assets/javascripts/chat.coffee"
+                                                             class="shortcut">chat.coffee</a>, to keep our code compact.
+        Moreover, we use <code>sbt-coffeescript</code> plugin (take a look at : <a href="#code/project/plugins.sbt"
+                                                                                   class="shortcut">plugins.sbt</a>)
+        to compile CoffeeScript sources to JavaScript.
+
+        examine the <code>chat.coffe</code> file to learn how:
+    <ul>
+        <li><code>WebSocket</code> object is instantiated</li>
+        <li>messages are marshaled and unmarshaled with use of <code>JSON</code> object</li>
+        <li>messages are sent upon form submit</li>
+        <li>messages are received from the server by <code>onmessage</code> callback of the <code>WebSocket</code> object</li>
+    </ul>
+
+    </p>
+    <p>
+
+    </p>
 </div>
 
 <p>
 
-<h2>Deployment scenario</h2>
+<h2>Backend</h2>
 
 <p>
-    Normally you would run cluster nodes not only in separate JVMs but also on different physical machines.
+    You would rather run cluster nodes not only in separate JVMs but also on different physical machines in production.
     This can be excessive for testing and experimenting. To simplify cluster setup, we will simulate it by starting
     three actor systems on different ports. The configuration of actor systems is located in <a
         href="#code/conf/application.conf" class="shortcut">application.conf</a> file.
 </p>
 
 <p>
-    Nevertheless, you can adjust the configuration to your preference of running on different machines.
+    Nevertheless, you can adjust the configuration if your preference is to run them on different machines.
     This can be done by redefinition of the <code>akka.cluster.seed-nodes</code> section in the aforementioned
-    <a href="#code/conf/application.conf" class="shortcut">application.conf</a>.
+    <a href="#code/conf/application.conf" class="shortcut">application.conf</a> coniguration file.
 </p>
 
 <p>
-    To demonstrate the communication between nodes we will start three Play app instances, as reflected in the <a
-        href="#code/conf/application.conf" class="shortcut">application.conf</a> file.
-    Assuming that this file remains unchanged, we will start the first Play application node on port 9001 of your box. The port 2551 will be used for remote communication.
-    The second one will be started on port 9002 with port 2552 for remoting, and the last node on port 9003 and port
+    To demonstrate the communication between nodes we will start three Play app instances, as reflected in the
+    <a href="#code/conf/application.conf" class="shortcut">application.conf</a> file.
+    Assuming that this file remains unchanged, we will start the first Play application node on port 9001 of your box.
+    Port 2551 will be used for remote communication. The second one will be started on port 9002 with port 2552 for
+    remoting, and the last node on port 9003 and port
     2553 respectively.
 
-    To achieve this aim you should run the following commands:
+    To achieve this aim you should run the following commands when using Linux/Unix-like system:
 <ul>
-    <li><code>activator -Dhttp.port=9001 -Dakka.remote.netty.tcp.port=2551 run</code></li>
-    <li><code>activator -Dhttp.port=9002 -Dakka.remote.netty.tcp.port=2552 run</code></li>
-    <li><code>activator -Dhttp.port=9003 -Dakka.remote.netty.tcp.port=2553 run</code></li>
+    <li><code>./activator "run -Dhttp.port=9001 -Dakka.remote.netty.tcp.port=2551"</code></li>
+    <li><code>./activator "run -Dhttp.port=9002 -Dakka.remote.netty.tcp.port=2552"</code></li>
+    <li><code>./activator "run -Dhttp.port=9003 -Dakka.remote.netty.tcp.port=2553"</code></li>
 </ul>
-    This will result in running three http services on your host, using 9001, 9002 and 9003 ports for http communication respectively.
+
 </p>
 
 <p>
-    Off course, in production environment, a setup with distinct hosts makes more sense in production environment.
+    Off course a setup with distinct hosts makes more sense in production environment as we stated before.
 
-    Also, especially in such deployment, a load balancer in front of the cluster (eg. <a href="http://www.haproxy.org/">HAProxy</a>).
-    is the solution to distribute the traffic between nodes.
+    Also a load balancer in front of the cluster (eg. <a href="http://www.haproxy.org/">HAProxy</a>)
+    is required to distribute the traffic between nodes.
 
     Load balancer configuration is beyond the scope of this tutorial, but let us just note that care should be taken to
-    configure the load balancer, to properly maintain active websocket connections in a multinode setup.
-    More info on HAProxy configuration can be found <a
-        href="http://blog.haproxy.com/2012/11/07/websockets-load-balancing-with-haproxy/">here</a>.
+    configure the load balancer properly, to maintain active websocket connections in a multinode setup.
+    More info on HAProxy configuration can be found
+    <a href="http://blog.haproxy.com/2012/11/07/websockets-load-balancing-with-haproxy/">here</a>.
+</p>
+
+<h3>Startup and cluster nodes' discovery</h3>
+
+<p>
+    Since Akka Cluster needs a moment to discover all it's members, you might experience a short delay between the startup and interchanging messages among those nodes.
+    You can verify the correctness of the setup by searching log output for "Member is Up" text.
+    To make sure your three nodes have become members there should be something like this in the log output
+    <pre>
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2551
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2552
+    [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2553
+    </pre>
+</p>
+
+<p>
+    In Linux/Unix environments you can also check the setup by issuing <code>netstat</code> command and observing the
+    output, which should include akka remoting and http sockets in LISTEN state:
+
+    <pre>
+    ~/javeo/clustered-chat$ netstat -tulpn |grep java
+    .....
+    tcp6       0      0 127.0.0.1:2551          :::*                    LISTEN      14957/java
+    tcp6       0      0 127.0.0.1:2552          :::*                    LISTEN      12809/java
+    tcp6       0      0 127.0.0.1:2553          :::*                    LISTEN      13647/java
+    tcp6       0      0 :::9001                 :::*                    LISTEN      14957/java
+    tcp6       0      0 :::9002                 :::*                    LISTEN      12809/java
+    tcp6       0      0 :::9003                 :::*                    LISTEN      13647/java
+    .....
+    </pre>
 </p>
 
 
 <p>
     Note that the user's nickname is stored in a cookie, so you can only have one active session per browser.
     You should open applications in different browsers or use private/incognito browser mode.
-    After running, please open three browsers with <a href="http://localhost:9001">localhost:9001</a>, <a
+    After boot, please open three browsers with <a href="http://localhost:9001">localhost:9001</a>, <a
         href="http://localhost:9002">localhost:9002</a>
     and <a href="http://localhost:9003">localhost:9003</a>
 </p>
 
-<h3>Cluster nodes' discovery</h3>
-
-<p>
-    Akka Cluster needs a moment to discover all it's members,
-    so there is a short delay between the startup and interchanging messages among those nodes.
-    You can verify the correctness of running by searching log output for "Member is Up" text.
-    To make sure your three nodes have become members there should be something like this in the log output
-            <pre><code>
-                [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2551
-                [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2552
-                [info] - actors.ChatRoom - Member is Up: akka.tcp://application@127.0.0.1:2553
-            </code></pre>
-</p>
 <p>
     Now you can define nicknames for all participants and start talking.
 </p>
-</div>
+
 
 <div>
-    <h2>How it works</h2>
+    <h2></h2>
 
     <img src="tutorial/chat.png">
 
-    <p>
-        Assume a scenario with six users - named A-F. The user A is connected to host on port 9001.
-        Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
-        The diagram shows communication channels between actors.
-    </p>
+
 
     <p>
-        The whole chat logic within the browser is being done by <a href="#code/app/assets/javascripts/chat.coffee"
-                                                                    class="shortcut">chat.coffee</a>.
-        We use <a href="http://coffeescript.org/">coffeescript</a>, to make the code more concise.
-        Moreover, we use <code>sbt-coffeescript</code> plugin (take a look at : <a href="#code/project/plugins.sbt"
-                                                                                   class="shortcut">plugins.sbt</a>)
-        which compiles CoffeeScript sources to JavaScript for us.
-    </p>
+        Please note that the <code>/socket</code> context in <code>routes</code> file points to <code>controllers.Chat.socket</code>
+        controller method.
+        Take a look how connections are handled with use of <code>WebSocket</code> handler.
 
-    <p>
-        Please note that the <code>/socket</code> context in <code>routes</code> file points to <code>controllers.Chat.socket</code> controller method.
-        In this method please note how connections are handled with use of <code>WebSocket</code> handler to pass Websocket messages to the actor. .
-
-
-        Each user has his own opened websocket serviced by <a href="#code/app/actors/UserSocket.scala" class="shortcut">UserSocket.scala</a>.
+        Each user has their own opened websocket serviced by <a href="#code/app/actors/UserSocket.scala" class="shortcut">UserSocket.scala</a>.
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's browser,
         parses it and eventually it sends a <code>ChatMessage(user: String, text: String)</code> to the next <a
             href="#code/app/actors/ChatRoom.scala" class="shortcut">ChatRoom.scala</a>
@@ -169,8 +229,13 @@
         implemented by the <code>forwardToOtherClusterMembers</code> method.
     </p>
 
-    <h3>The essence - message distribution between nodes</h3>
+    <h3>Message distribution between nodes</h3>
     <img src="tutorial/flow.png">
+    <p>
+        Let's play a scenario with six users - named A-F. The user A is connected to host on port 9001.
+        Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
+        The diagram shows communication channels between actors.
+    </p>
 
     <p>The <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> feature is leveraged to
         implement the delivery of messages in a dispersed multi-node
@@ -186,17 +251,23 @@
         </li>
         <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoom</code>s sends the message to its users' <code>UserSocket</code>s
         </li>
-        <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the client.</li>
+        <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the client.
+        </li>
     </ol>
-    </p>
+    Take a moment to independently experiment and play on your own with users A-F.
 
+    </p>
     <h2>Summary</h2>
 
     <p>
-        In this example application we have demonstrated how a message driven websocket application can be scaled out thanks to Akka Cluster at it's core.
+        In this example application we have demonstrated how a message driven web application using <code>websockets</code> can be
+        implemented with <a href="http://akka.io/">Akka</a> and scaled out thanks to <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> at it's core.
 
+        The application is a good starting point if you want to build a scalable and resilient cluster of <code>websocket</code> services since it can be easily applied to different use cases and extended.
+
+        By adding cluster management facilities, from simple load balancing (eg. with use <a href="http://www.haproxy.org/">HA Proxy</a>) to a complete (micro)service manager solution like <a href="http://www.typesafe.com/products/conductr">ConductR</a> or
+        <a href="http://kubernetes.io/">Kubernetes</a> if you like Docker, you will get a complete, managed, scalable and reactive cluster of websocket services servicing the frontend.
     </p>
-
 </div>
 </body>
 </html>
