@@ -199,9 +199,6 @@
 
 
 <div>
-    <h2></h2>
-
-    <img src="tutorial/chat.png">
 
 
 
@@ -230,11 +227,14 @@
     </p>
 
     <h3>Message distribution between nodes</h3>
-    <img src="tutorial/flow.png">
+
     <p>
         Let's play a scenario with six users - named A-F. The user A is connected to host on port 9001.
-        Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003.
-        The diagram shows message flow between actors and nodes.
+        Users B, C and D are connected to host on port 9002. The rest of them are connected to host on port 9003, as shown on the diagram below.
+
+        <br/>
+        <img src="tutorial/chat.png"/>
+
     </p>
 
     <p>The <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> feature is leveraged to
@@ -254,9 +254,13 @@
         <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the client.
         </li>
     </ol>
-    Take a moment to independently experiment and play on your own with users A-F.
-
+    <img src="tutorial/flow.png"/>
+    <br/>
     </p>
+
+    <h2>Testing</h2>
+    <p>TBD</p>
+
     <h2>Summary</h2>
 
     <p>
