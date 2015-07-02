@@ -259,12 +259,18 @@
     </p>
 
     <h2>Testing</h2>
-    <p>TBD</p>
+    <p>
+        You can also take a moment to examine the approach to testing, actors in particular.
+        <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.<br/>
+        <code>ChatRoomSpec</code> and <code>UserSocketSpec</code> test actor behaviour.
+        The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html">Akka akka-testkit</a> facilities including the TestProbe mocking class.
+        The <code>tell</code> method is used to pass messages with second parameter to simulate the sending actor.
+        The <code>expextMsg</code> method is used to assert message flow within the actor system in accordance with specification.    </p>
 
     <h2>Summary</h2>
 
     <p>
-        In this example application we have demonstrated how a message driven web application using <code>websockets</code> can be
+        In this application template we have demonstrated how a message driven web application using <code>websockets</code> can be
         implemented with <a href="http://akka.io/">Akka</a> and scaled out thanks to <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> at it's core.
 
         The application is a good starting point if you want to build a scalable and resilient cluster of <code>websocket</code> services.
