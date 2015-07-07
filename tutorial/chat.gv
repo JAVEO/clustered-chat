@@ -11,8 +11,8 @@ digraph G {
 		label = "localhost:9001"
 		color=green
 
-		websocket_A -> chatRoom_9001
-		chatRoom_9001 -> websocket_A
+		websocket_A -> PubSub_2551
+		PubSub_2551 -> websocket_A
 	}
 
 	subgraph cluster_9002 {
@@ -35,12 +35,12 @@ digraph G {
 		label = "localhost:9002"
 		color=blue
 
-		websocket_B -> chatRoom_9002
-		chatRoom_9002 -> websocket_B
-		websocket_C -> chatRoom_9002
-		chatRoom_9002 -> websocket_C
-		websocket_D -> chatRoom_9002
-		chatRoom_9002 -> websocket_D
+		websocket_B -> PubSub_2552
+		PubSub_2552 -> websocket_B
+		websocket_C -> PubSub_2552
+		PubSub_2552 -> websocket_C
+		websocket_D -> PubSub_2552
+		PubSub_2552 -> websocket_D
 	}
 
 	subgraph cluster_9003 {
@@ -58,16 +58,16 @@ digraph G {
 		label = "localhost:9003"
 		color=sienna
 
-		websocket_E -> chatRoom_9003
-		chatRoom_9003 -> websocket_E
-		websocket_F -> chatRoom_9003
-		chatRoom_9003 -> websocket_F
+		websocket_E -> PubSub_2553
+		PubSub_2553 -> websocket_E
+		websocket_F -> PubSub_2553
+		PubSub_2553 -> websocket_F
 	}
 
-	chatRoom_9001 -> chatRoom_9002 [constraint=false]
-	chatRoom_9002 -> chatRoom_9001
-	chatRoom_9001 -> chatRoom_9003 [constraint=false]
-	chatRoom_9003 -> chatRoom_9001
-	chatRoom_9002 -> chatRoom_9003
-	chatRoom_9003 -> chatRoom_9002 [constraint=false]
+	PubSub_2551 -> PubSub_2552 [constraint=false]
+	PubSub_2552 -> PubSub_2551
+	PubSub_2551 -> PubSub_2553 [constraint=false]
+	PubSub_2553 -> PubSub_2551
+	PubSub_2552 -> PubSub_2553
+	PubSub_2553 -> PubSub_2552 [constraint=false]
 }
