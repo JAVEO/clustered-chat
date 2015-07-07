@@ -211,11 +211,11 @@
                                                                        class="shortcut">UserSocket.scala</a>.
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's
         browser,
-        parses it and eventually publish a <code>ChatMessage(user: String, text: String)</code>
+        parses it and eventually publishes a <code>ChatMessage(user: String, text: String)</code>.
 
-        During the creation of a <code>UserSocket</code>, it registers to the <code>DistributedPubSubMediator</code> by sending a
+        Upon it's creation, a <code>UserSocket</code> registers to the <code>DistributedPubSubMediator</code> by sending a
         <code>Subscribe</code> message with topic name "chat". <code>DistributedPubSubMediator</code> is extension to akka cluster
-        used to send messages to all actors in the cluster. To publish message we use:
+        used to send messages to all actors in the cluster. To publish the message we use:
         <code>
             mediator ! Publish("chat", ChatMessage(uid, msg)
         </code>
@@ -243,8 +243,8 @@
         <li><b>A</b>'s <code>UserSocket</code> parses the message and sends to node <b>9001</b>'s
             <code>DistributedPubSubMediator</code>
         </li>
-        <li><code>DistributedPubSubMediator</code> send the message to all <code>UserSocket</code>
-            on nodes (<b>9001</b>, <b>9002</b>, <b>9003</b>)
+        <li><code>DistributedPubSubMediator</code> sends the message to all <code>UserSocket</code>
+            cluster nodes (<b>9001</b>, <b>9002</b>, <b>9003</b>)
         </li>
         <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the
             client.
@@ -259,8 +259,8 @@
 
     <p>
         You can also take a moment to examine the approach to testing, actors in particular.
-        <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.<br/>
-        <code>UserSocketSpec</code> test actor behaviour.
+        <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.
+        <code>UserSocketSpec</code> tests actor behaviour.
         The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a
             href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html">Akka akka-testkit</a> facilities
         including the TestProbe mocking class.
@@ -285,7 +285,7 @@
             href="http://www.haproxy.org/">HA Proxy</a>) or a complete (micro)service manager solution like <a
             href="http://www.typesafe.com/products/conductr">ConductR</a> or
         <a href="http://kubernetes.io/">Kubernetes</a> if you like Docker, you will get a complete, managed,
-        scalable and reactive cluster of websocket services servicing the frontend.
+        scalable and reactive cluster of websocket services communicating with the frontend.
     </p>
 </div>
 </body>
