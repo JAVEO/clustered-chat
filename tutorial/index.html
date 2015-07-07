@@ -211,24 +211,14 @@
                                                                        class="shortcut">UserSocket.scala</a>.
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's
         browser,
-        parses it and eventually it sends a <code>ChatMessage(user: String, text: String)</code> to the next <a
-            href="#code/app/actors/ChatRoom.scala" class="shortcut">ChatRoom.scala</a>
+        parses it and eventually publish a <code>ChatMessage(user: String, text: String)</code>
 
-        During the creation of a <code>UserSocket</code>, it registers to the <code>ChatRoom</code> by sending a
-        <code>Subscribe</code>
-        message.
-
-        From this time on the <code>ChatRoom</code> knows about a new user, registers him and starts to watch his
-        lifecycle.
-
-        Especially, a <code>ChatRoom</code> will receive a Terminated(subject) message when the watched actor is
-        terminated.
-    </p>
-
-    <p>
-        The <code>ChatRoom</code> is responsible for forwarding <code>ChatMessage</code>s to its own users
-        and to other <code>ChatRoom</code>s run on other nodes if it is a chat message from its own user which is
-        implemented by the <code>forwardToOtherClusterMembers</code> method.
+        During the creation of a <code>UserSocket</code>, it registers to the <code>DistributedPubSubMediator</code> by sending a
+        <code>Subscribe</code> message with topic name "chat". <code>DistributedPubSubMediator</code> is extension to akka cluster
+        used to send messages to all actors in the cluster. To publish message we use:
+        <code>
+            mediator ! Publish("chat", ChatMessage(uid, msg)
+        </code>
     </p>
 
     <h3>Message distribution between nodes</h3>
@@ -251,13 +241,10 @@
     <ol>
         <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocket</code> receives it</li>
         <li><b>A</b>'s <code>UserSocket</code> parses the message and sends to node <b>9001</b>'s
-            <code>ChatRoom</code>
+            <code>DistributedPubSubMediator</code>
         </li>
-        <li>node <b>9001</b>'s <code>ChatRoom</code> send the message to <b>A</b>'s <code>UserSocket</code> and to
-            the
-            other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoom</code>s
-        </li>
-        <li>the other nodes (<b>9002</b>, <b>9003</b>) <code>ChatRoom</code>s sends the message to its users' <code>UserSocket</code>s
+        <li><code>DistributedPubSubMediator</code> send the message to all <code>UserSocket</code>
+            on nodes (<b>9001</b>, <b>9002</b>, <b>9003</b>)
         </li>
         <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the
             client.
@@ -273,7 +260,7 @@
     <p>
         You can also take a moment to examine the approach to testing, actors in particular.
         <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.<br/>
-        <code>ChatRoomSpec</code> and <code>UserSocketSpec</code> test actor behaviour.
+        <code>UserSocketSpec</code> test actor behaviour.
         The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a
             href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html">Akka akka-testkit</a> facilities
         including the TestProbe mocking class.

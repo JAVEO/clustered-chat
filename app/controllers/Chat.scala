@@ -17,7 +17,7 @@ import scala.concurrent.Future
 class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem) extends Controller with I18nSupport {
   val User = "user"
 
-  lazy val chatRoom = system.actorOf(Props[ChatRoom], "chat-room")
+  val chatRoom = system.actorOf(Props[ChatRoom], "chat-room")
 
   val nickForm = Form(single("nickname" -> nonEmptyText))
 
@@ -52,7 +52,7 @@ class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem) extends 
   def socket = WebSocket.tryAcceptWithActor[JsValue, JsValue] { implicit request =>
     Future.successful(request.session.get(User) match {
       case None => Left(Forbidden)
-      case Some(uid) => Right(UserSocket.props(chatRoom, uid))
+      case Some(uid) => Right(UserSocket.props(uid))
     })
   }
 }
