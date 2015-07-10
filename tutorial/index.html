@@ -221,6 +221,14 @@
         </code>
     </p>
 
+    <p>
+        DistributedPubSubExtension is very nice implementation of publish-subscribe style communication.
+        Underneath it use Actor to represent named topic and Akka Routing to distribute messages in cluster.
+        From programmer point of view you don't even need to know about clustered environment, everything is simple message passing like to normal Actors.
+        For more information please check <a href="http://doc.akka.io/docs/akka/2.3.12/contrib/distributed-pub-sub.html#distributed-pub-sub">documentation</a> on Akka web page.
+        You can also check Typesafe <a href="https://www.typesafe.com/activator/template/akka-clustering">activator template</a>.
+    </p>
+
     <h3>Message distribution between nodes</h3>
 
     <p>
