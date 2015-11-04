@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html>
-<head lang="en">
+<html lang="en">
+<head>
     <meta charset="UTF-8">
-    <title></title>
+    <title>Reactive chat application with Play, Akka Cluster and Websockets</title>
 </head>
 <body>
 
@@ -13,7 +13,7 @@
         The purpose of this activator template is to illustrate how a horizontally scalable, reactive architecture with
         websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a
             href="http://akka.io/">Akka</a> with <a
-            href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a>.
+            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a>.
     </p>
 </div>
 
@@ -69,7 +69,7 @@
         regardless of their connection to one particular cluster node.
 
         It turns out that such scenario can be handled by <a
-            href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> by enabling the distribution
+            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a> by enabling the distribution
         of messages among server instances within the cluster.
     </p>
 
@@ -176,7 +176,7 @@
         In Linux/Unix environments you can also check the setup by issuing <code>netstat</code> command and
         observing the
         output, which should include akka remoting and http sockets in LISTEN state:
-    
+
         <pre>
         ~/javeo/clustered-chat$ netstat -tulpn |grep java
         .....
@@ -223,13 +223,13 @@
     </p>
 
     <p>
-        The <code>DistributedPubSubExtension</code> and the <code>mediator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
+        The <code>DistributedPubSub</code> and the <code>mediator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
         It is a nice implementation of publish-subscribe communication style with named topics which uses actors Akka Routing under the hood to distribute messages in the cluster.
         The use of this feature is very simplistic since message passing is done same way as to local Actors - it is location transparent. One just has to subscribe to a named topic to receive distributed messages.
-        This way, with use of <code>DistributedPubSubExtension</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
+        This way, with use of <code>DistributedPubSub</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
         In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>mediator</code> :
         <pre>
-            val mediator = DistributedPubSubExtension(context.system).mediator
+            val mediator = DistributedPubSub(context.system).mediator
             mediator ! Subscribe(topic, self)
         </pre>
         When it receives a JSON in <code>receive</code>  method it is eventually published to the named <code>topic</code> as pointed out above with use of the <code>Publish</code> message.
@@ -237,8 +237,11 @@
     </p>
 
     <p>
-        For detailed information on this mechanism please check <a href="http://doc.akka.io/docs/akka/2.3.12/contrib/distributed-pub-sub.html#distributed-pub-sub">documentation</a> on Akka web page.
-        Also take a look at Typesafe's <a href="https://www.typesafe.com/activator/template/akka-clustering">activator template</a> for more example use cases of <code>DistributedPubSub</code>.
+        For detailed information on this mechanism please check
+        <a href="http://doc.akka.io/docs/akka/2.4.0/scala/distributed-pub-sub.html#DistributedPubSub_Extension">documentation</a>
+        on Akka web page. Also take a look at Typesafe's
+        <a href="https://www.typesafe.com/activator/template/akka-clustering">activator template</a> for more example
+        use cases of <code>DistributedPubSub</code>.
     </p>
 
     <h3>A scenario of message distribution between nodes.</h3>
@@ -251,7 +254,7 @@
         <img src="tutorial/chat.png"/>
     </p>
 
-    <p>As decribed above the <a href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> feature is leveraged
+    <p>As decribed above the <a href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a> feature is leveraged
         to implement the delivery of messages in a dispersed multi-node clustered environment.
         The steps below demonstrate how a chat message which is sent by user A from 9001 instance is broadcasted to
         all
@@ -280,7 +283,7 @@
         <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.
         <code>UserSocketSpec</code> tests actor behaviour.
         The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a
-            href="http://doc.akka.io/docs/akka/snapshot/scala/testing.html">Akka akka-testkit</a> facilities
+            href="http://doc.akka.io/docs/akka/2.4.0/scala/testing.html">Akka akka-testkit</a> facilities
         including the TestProbe mocking class.
         The <code>tell</code> method is used to pass messages with second parameter to simulate the sending actor.
         The <code>expextMsg</code> method is used to assert message flow within the actor system in accordance with
@@ -294,7 +297,7 @@
         <code>websockets</code>
         can be
         implemented with <a href="http://akka.io/">Akka</a> and scaled out thanks to <a
-            href="http://doc.akka.io/docs/akka/2.3.11/common/cluster.html">Akka Cluster</a> at it's core.
+            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a> at it's core.
 
         The application is a good starting point if you want to build a scalable and resilient cluster of <code>websocket</code>
         services.

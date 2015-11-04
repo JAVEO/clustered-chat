@@ -2,8 +2,8 @@ package actors
 
 import actors.UserSocket.{ChatMessage, Message}
 import akka.actor._
-import akka.contrib.pattern.DistributedPubSubExtension
-import akka.contrib.pattern.DistributedPubSubMediator.{SubscribeAck, Subscribe}
+import akka.cluster.pubsub.DistributedPubSub
+import akka.cluster.pubsub.DistributedPubSubMediator.{SubscribeAck, Subscribe}
 import akka.testkit.TestProbe
 import org.specs2.mutable._
 import play.api.libs.json._
@@ -19,7 +19,7 @@ class UserSocketSpec extends Specification {
     "send chat message to all subscribers" in new AkkaTestkitSpecs2Support {
       implicit val messageWrites = Json.writes[Message]
 
-      val mediator = DistributedPubSubExtension(system).mediator
+      val mediator = DistributedPubSub(system).mediator
       val browser = TestProbe()
       val chatMember1 = TestProbe()
       val chatMember2 = TestProbe()
