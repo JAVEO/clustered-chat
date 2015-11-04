@@ -3,8 +3,8 @@ package actors
 import actors.UserSocket.{ChatMessage, Message}
 import actors.UserSocket.Message.messageReads
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import akka.contrib.pattern.DistributedPubSubExtension
-import akka.contrib.pattern.DistributedPubSubMediator.{Publish, Subscribe}
+import akka.cluster.pubsub.DistributedPubSub
+import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe}
 import akka.event.LoggingReceive
 import play.api.libs.json.{Writes, JsValue, Json}
 import play.twirl.api.HtmlFormat
@@ -43,7 +43,7 @@ class UserSocket(uid: String, out: ActorRef) extends Actor with ActorLogging {
 
   val topic = "chat"
 
-  val mediator = DistributedPubSubExtension(context.system).mediator
+  val mediator = DistributedPubSub(context.system).mediator
 
   mediator ! Subscribe(topic, self)
 
