@@ -17,7 +17,14 @@ class UserSocketSpec extends Specification {
     val topic = "chat"
 
     "send chat message to all subscribers" in new AkkaTestkitSpecs2Support {
-      implicit val messageWrites = Json.writes[Message]
+
+      implicit val messageWrites = new Writes[Message] {
+        def writes(message: Message) = Json.obj(
+          "type" -> "message",
+          "topic" -> message.topic,
+          "msg" -> message.msg
+	)
+      }
 
       val mediator = DistributedPubSub(system).mediator
       val browser = TestProbe()
@@ -28,18 +35,18 @@ class UserSocketSpec extends Specification {
       val socket = system.actorOf(UserSocket.props("user1")(browser.ref), "userSocket")
       val message = "hello"
 
-      socket ! Json.toJson(Message(message))
+      socket ! Json.toJson(Message(topic, message))
 
       chatMember1.ignoreMsg({ case SubscribeAck => true })
-      chatMember1.expectMsg(ChatMessage(UserId, message))
+      chatMember1.expectMsg(ChatMessage(topic, UserId, message))
       chatMember2.ignoreMsg({ case SubscribeAck => true })
-      chatMember2.expectMsg(ChatMessage(UserId, message))
+      chatMember2.expectMsg(ChatMessage(topic, UserId, message))
     }
 
     "forward chat message to browser" in new AkkaTestkitSpecs2Support {
       val browser = TestProbe()
       val socket = system.actorOf(UserSocket.props(UserId)(browser.ref), "userSocket")
-      val chatMessage = ChatMessage(UserId, "There is important thing to do!")
+      val chatMessage = ChatMessage(topic, UserId, "There is important thing to do!")
 
       socket ! chatMessage
 
