@@ -61,8 +61,6 @@ $ ->
   ws = new WebSocket $("body").data("ws-url")
   ws.onmessage = (event) ->
     message = JSON.parse event.data
-    console.log(' >> msg')
-    console.log(message)
     switch message.type
       when "message"
         messages().append(messageOnLeft(message.user, message.text))
