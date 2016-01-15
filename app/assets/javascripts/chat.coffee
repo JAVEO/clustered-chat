@@ -2,12 +2,14 @@ msgform = -> $("#msgform")
 createTopicForm = -> $("#topicform")
 comment = -> $("#comment")
 topicNameEl = -> $("#topicName")
+currentTopicEl = -> $("#current-topic")
 confirmButton = -> $("#sendMessageButton")
 createTopicButton = -> $("#createTopicButton")
 subscribeButton = -> $(".subscribe")
 conversation = -> $("#conversation #messages")
 messages = -> $("#messages")
 topics = -> $("#topics")
+topicsPanel = -> $("#topics-panel .topics-panel")
 messageOnLeftTemplate = -> $("#message-on-left-template")
 topicsOnLeftTemplate = -> $("#topics-on-left-template")
 
@@ -34,6 +36,12 @@ resetTopicForm = ->
 
 niceScrolls = ->
   conversation().niceScroll
+    background: "#eee"
+    cursorcolor: "#ddd"
+    cursorwidth: "10px"
+    autohidemode: false
+    horizrailenabled: false
+  topics().niceScroll
     background: "#eee"
     cursorcolor: "#ddd"
     cursorwidth: "10px"
@@ -83,6 +91,9 @@ $ ->
     ws.close()
 
   msgform().submit (event) ->
+  	if !currentTopic 
+  	  alert "You're not subscribed to any topic."
+  	  return
     event.preventDefault()
     message = { type: "message", topic: currentTopic, msg: comment().val() }
     if messageExists()
@@ -118,6 +129,21 @@ $ ->
     currentTopic = topicName
     message = {type: "subscribe", topic: topicName}
     ws.send(JSON.stringify(message))
+    comment().prop "disabled", false
+    enableConfirmButton()
+    oldActive = topics().find(".subscribe.active")
+    if oldActive
+      oldActive.removeClass("active")
+      oldActive.removeClass("label-info")
+      oldActive.addClass("label-default")
+      oldActive.prop "disabled", false
+      oldActive.html "subscribe"
+    el.addClass("active");
+    el.removeClass("label-default")
+    el.addClass("label-info")
+    el.prop "disabled", true
+    el.html "active"
+    currentTopicEl().html currentTopic
     clearChat()
 
   clearChat = ->
@@ -126,7 +152,7 @@ $ ->
   key_enter = 13
 
   comment().keyup (event) ->
-    if messageExists()
+    if currentTopic && messageExists()
       enableConfirmButton()
     else
       disableConfirmButton()
