@@ -22,7 +22,26 @@ p.conversation_comment {
   margin-right: 10px;
 }
 
-#messages {
+#messages, #topics {
   overflow: hidden;
-  height: 80vh;
+  height: 60vh;
+}
+
+#topics .subscribe {
+  cursor: pointer;
+}
+
+#topics:last-child {
+  height: 100%;
+}
+
+.chatname-container {
+  display: inline-block;
+  max-height: 15px;
+  width: 50%;
+  text-align: right;
+}
+
+#topicform  #topicName {
+  width: 50%;
 }

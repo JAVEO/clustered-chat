@@ -1,6 +1,6 @@
 package actors
 
-import actors.UserSocket.ChatMessage
+import actors.ChatMessage
 import org.specs2.mutable.Specification
 import play.api.libs.json.Json
 
@@ -8,6 +8,7 @@ class ChatMessageSpec extends Specification {
   val input = """
                 |{
                 |    "type": "message",
+                |    "topic": "main",
                 |    "user": "John",
                 |    "text": "Yupi!<br/>Bug has been fixed."
                 |}
@@ -15,7 +16,7 @@ class ChatMessageSpec extends Specification {
 
   val chatMessageJson = Json.parse(input)
 
-  val chatMessage = ChatMessage("John", "Yupi!\nBug has been fixed.")
+  val chatMessage = ChatMessage("main", "John", "Yupi!\nBug has been fixed.", new java.util.Date(0))
 
   "Chat message" should {
     "produce json" in {

@@ -89,6 +89,8 @@
         After opening a home/index page you will see a simple form to define your nickname.
         To go further to chat page, you should fill out the form and submit it.
         To go back to home page, you should press the `leave chat` link to exit the chat page.
+        On the chat page users communicate by the following scenario: users create topics, subscribe
+        to them and, if they happen to be subscribed to the same topic, they can chat.
         All chat messages are transferred through an active web socket.
     </p>
 
@@ -212,13 +214,14 @@
         Each user has their own websocket open which is serviced by <a href="#code/app/actors/UserSocket.scala"
                                                                        class="shortcut">UserSocket.scala</a>.
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's
-        browser, parses it and eventually publishes a <code>ChatMessage(user: String, text: String)</code>.
+        browser, parses it and eventually publishes a <code>ChatMessage(topic: String, user: String, text: String)</code> (or <code>TopicNameMessage(topicName: String)</code> - indicating that a new topic was created).
 
         Upon it's creation, a <code>UserSocket</code> registers to the <code>DistributedPubSubMediator</code> by sending a
-        <code>Subscribe</code> message with topic name "chat".
+        <code>Subscribe</code> message with topic name "topics".
+        This special topic is needed to give users ability to create topics and to inform all users about new topics.
         <br> To publish the message we use:
         <pre>
-            mediator ! Publish(topic, ChatMessage(uid, msg))
+            mediator ! Publish(topic, ChatMessage(topic, uid, msg))
         </pre>
     </p>
 
@@ -230,9 +233,10 @@
         In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>mediator</code> :
         <pre>
             val mediator = DistributedPubSub(context.system).mediator
-            mediator ! Subscribe(topic, self)
+            mediator ! Subscribe(topicsTopic, self)
         </pre>
-        When it receives a JSON in <code>receive</code>  method it is eventually published to the named <code>topic</code> as pointed out above with use of the <code>Publish</code> message.
+        When one of users creates a topic, his <code>UserSocket</code> will send a <code>TopicNameMessage</code> to the mediator. The system will deliver this message to all users, and a new topic name will be shown in each user's browser page along with the "subscribe" button.
+        When a user clicks "subscribe", his <code>UserSocket</code> will send a <code>Subscribe</code> message to mediator. After that a user will communicate with others through the mediator by sending <code>ChatMessage</code> messages.
         The received ChatMessage is serialized and sent to <code>out</code>.
     </p>
 

@@ -9,6 +9,7 @@ scalaVersion := "2.11.7"
 val akkaVersion = "2.4.0"
 
 libraryDependencies ++= Seq(
+  "com.typesafe.akka" %% "akka-distributed-data-experimental" % akkaVersion,
   "com.typesafe.akka" %% "akka-cluster" % akkaVersion,
   "com.typesafe.akka" %% "akka-contrib" % akkaVersion,
   "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
