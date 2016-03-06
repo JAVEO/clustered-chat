@@ -1,11 +1,17 @@
 package controllers
 
-import play.api.Play
-import play.api.Play.current
+import javax.inject.{Inject, Provider}
 
-trait Conf {
-  def clusterHostname = Play.application.configuration.getString("akka.remote.netty.tcp.hostname").getOrElse("127.0.0.1")
-  def clusterPort = Play.application.configuration.getInt("akka.remote.netty.tcp.port").getOrElse(0)
+import play.api.Configuration
+
+class Conf(configuration: Configuration) {
+  def clusterHostname = configuration.getString("akka.remote.netty.tcp.hostname").getOrElse("127.0.0.1")
+
+  def clusterPort = configuration.getInt("akka.remote.netty.tcp.port").getOrElse(0)
 }
 
-object Conf extends Conf
+class ConfProvider @Inject() (configuration: Configuration) extends Provider[Conf] {
+
+  lazy val get = new Conf(configuration)
+
+}
