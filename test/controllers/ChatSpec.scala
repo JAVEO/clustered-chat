@@ -1,6 +1,7 @@
 package controllers
 
 import akka.actor.ActorSystem
+import akka.stream.Materializer
 import org.specs2.mock.Mockito
 import play.api.i18n.MessagesApi
 import play.api.test._
@@ -9,7 +10,8 @@ class ChatSpec extends PlaySpecification with Mockito {
 
   val mockMessagesApi = mock[MessagesApi]
   val mockActorSystem = mock[ActorSystem]
-  val app = new Chat(mockMessagesApi, mockActorSystem)
+  val mockMaterializer = mock[Materializer]
+  val app = new Chat(mockMessagesApi, mockActorSystem, mockMaterializer)
   val additionalConf = Map("play.crypto.secret" -> "_Zgs2h=lF1BuKGAUNb5bsL<nQ62H=4xWYlcOT;NEmepkbjdb9PFl;hJ0ZzG/YkD=")
 
   "Chat" should {
