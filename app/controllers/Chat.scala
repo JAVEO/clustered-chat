@@ -2,20 +2,25 @@ package controllers
 
 import javax.inject._
 
-import actors.{UserSocket, ChatRoom}
+import actors.{ChatRoom, UserSocket}
 import akka.actor._
+import akka.stream.Materializer
 import play.api.Play.current
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.i18n.{I18nSupport, MessagesApi}
 import play.api.libs.json.JsValue
+import play.api.libs.streams.ActorFlow
 import play.api.mvc.{Action, Controller, WebSocket}
 
 import scala.concurrent.Future
 
 @Singleton
-class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem) extends Controller with I18nSupport {
+class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem, mat: Materializer) extends Controller with I18nSupport {
   val User = "user"
+
+  implicit val implicitMaterializer: Materializer = mat
+  implicit val implicitActorSystem: ActorSystem = system
 
   val chatRoom = system.actorOf(Props[ChatRoom], "chat-room")
 
@@ -49,10 +54,11 @@ class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem) extends 
     }.getOrElse(Redirect(routes.Chat.index()))
   }
 
-  def socket = WebSocket.tryAcceptWithActor[JsValue, JsValue] { implicit request =>
+  def socket = WebSocket.acceptOrResult[JsValue, JsValue] { implicit request =>
     Future.successful(request.session.get(User) match {
       case None => Left(Forbidden)
-      case Some(uid) => Right(UserSocket.props(uid))
+      case Some(uid) =>
+        Right(ActorFlow.actorRef(UserSocket.props(uid)))
     })
   }
 }
