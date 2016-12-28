@@ -2,18 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Reactive chat application with Play, Akka Cluster and Websockets</title>
+    <title>Reactive chat application with Play, Akka Distributed Data and Websockets</title>
 </head>
 <body>
 
 <div>
-    <h2>Reactive chat application with Play, Akka Cluster and Websockets</h2>
+    <h2>Reactive chat application with Play, Akka Distributed Data and Websockets</h2>
 
     <p>
         The purpose of this activator template is to illustrate how a horizontally scalable, reactive architecture with
         websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a
             href="http://akka.io/">Akka</a> with <a
-            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a>.
+            href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">Akka Distributed Data</a>.
     </p>
 </div>
 
@@ -69,7 +69,7 @@
         regardless of their connection to one particular cluster node.
 
         It turns out that such scenario can be handled by <a
-            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a> by enabling the distribution
+            href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">Akka Distributed Data</a> by enabling the distribution
         of messages among server instances within the cluster.
     </p>
 
@@ -216,36 +216,104 @@
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's
         browser, parses it and eventually publishes a <code>ChatMessage(topic: String, user: String, text: String)</code> (or <code>TopicNameMessage(topicName: String)</code> - indicating that a new topic was created).
 
-        Upon it's creation, a <code>UserSocket</code> registers to the <code>DistributedPubSubMediator</code> by sending a
-        <code>Subscribe</code> message with topic name "topics".
-        This special topic is needed to give users ability to create topics and to inform all users about new topics.
-        <br> To publish the message we use:
+        Upon it's creation, a <code>UserSocket</code> registers to the <code>akka.cluster.ddata.Replicator</code> by sending a
+
+        <code>Subscribe</code> message with <code>GSetKey</code>, initialized with the name "topics".
+    </p>
+
+    <h4>Distributed Data Types</h4>
+    <p>
+        In this tutorial we use two of the <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Data_Types">data types</a> that Akka Distributed Data provides us with:
+        <ul>
+          <li>
+            <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Sets">GSet</a>. The "G" means "grow-only", we can't delete from it. We use <code>GSet</code>s to store the list of topics and to store messages for each topic.
+          </li>
+          <li>
+            <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Flags_and_Registers">LWWRegister</a>  - stores one value. LWW means "last write wins". We use it to store the last message in each topic.
+          </li>
+        </ul>
+        A bunch of distributed sets would be enough to build a chat, so why do we use <code>LWWRegister</code>s? The reason is that it simplifies the logic of the callback to the "new message" event. When <code>GSet</code> gets updated, it sends the whole set to subscribers, but we need only the new message, that's why we use <code>LWWRegister</code>.
+    </p>
+
+    <p>
+        Why not just use <code>LWWRegister</code>s? We need <code>GSet</code>s to make new users able to retrieve the list of topics and the list of messages for the selected topic; to put it another way, we need <code>GSet</code>s to store the history.
+    </p>
+
+    <p>
+        Let's consider the following scenario:
+        <ol>
+          <li>
+            First User checks in, creates two topics, writes a message in each of them and waits for the answer in the second topic.
+          </li>
+          <li>
+            Second User arrives, goes to the second topic and chats with First User.
+          </li>
+          <li>
+            Third User creates a topic, goes to the second topic, reads the conversation and writes "I'm glad I didn't miss anything".
+          </li>
+        </ol>
+        Here is how distributed objects represent this process:
+        <img src="tutorial/heap.gif"/>
+    </p>
+
+    <p>
+        As we can see, the topics list is represented by a GSet, and each topic is represented by a GSet paired with an LWWRegister.
+    </p>
+
+    <p>
+        To publish the message we perform two operations:
+        <ul>
+          <li>Add a message to the topic's GSet.</li>
+          <li>Store the message in the topic's LWWRegister.</li>
+        </ul>
+        The corresponding code is a bit verbose, so let's first have a look at the simplified version of it:
         <pre>
-            mediator ! Publish(topic, ChatMessage(topic, uid, msg))
+            replicator ! Update("the key to find the gset of the topic", ...) {
+              // how to update the gset
+            }
+            replicator ! Update("the key to find topic's lwwregister", ...) {
+              // how to update the register
+            }
         </pre>
     </p>
 
     <p>
-        The <code>DistributedPubSub</code> and the <code>mediator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
-        It is a nice implementation of publish-subscribe communication style with named topics which uses actors Akka Routing under the hood to distribute messages in the cluster.
-        The use of this feature is very simplistic since message passing is done same way as to local Actors - it is location transparent. One just has to subscribe to a named topic to receive distributed messages.
-        This way, with use of <code>DistributedPubSub</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
-        In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>mediator</code> :
+        The code sends two <code>Update</code> messages to the <code>replicator</code>. When constructing the <code>Update</code> message, we initialize it with the key that the replicator will use to find the object, and with a function that does the updating.
+    </p>
+
+    <p>
+        Here is what the actual code looks like:
         <pre>
-            val mediator = DistributedPubSub(context.system).mediator
-            mediator ! Subscribe(topicsTopic, self)
+            replicator ! Update(GSetKey[ChatMessage](topic), GSet.empty[ChatMessage], WriteLocal) {
+              _ + chatMessage
+            }
+            replicator ! Update(LWWRegisterKey[ChatMessage](topic + "-lwwreg"), LWWRegister[ChatMessage](null), WriteLocal) {
+              reg =&gt; reg.withValue(chatMessage)
+            }
         </pre>
-        When one of users creates a topic, his <code>UserSocket</code> will send a <code>TopicNameMessage</code> to the mediator. The system will deliver this message to all users, and a new topic name will be shown in each user's browser page along with the "subscribe" button.
-        When a user clicks "subscribe", his <code>UserSocket</code> will send a <code>Subscribe</code> message to mediator. After that a user will communicate with others through the mediator by sending <code>ChatMessage</code> messages.
+    </p>
+
+
+    <p>
+        The <code>DistributedData</code> and the <code>replicator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
+        It is a nice implementation of publish-subscribe communication style with distributed objects which uses actors Akka Routing under the hood to distribute messages in the cluster.
+        The use of this feature is very simplistic since message passing is done same way as to local Actors - it is location transparent. One just has to subscribe to events to receive distributed messages.
+        This way, with use of <code>DistributedData</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
+        In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>replicator</code> :
+        <pre>
+            val replicator = DistributedData(context.system).replicator
+            ...
+            replicator ! Subscribe(topicsKey, self)
+        </pre>
+        When one of users creates a topic, his <code>UserSocket</code> will update a <code>GSet</code> that stores the topics. Since all users are subscribed to this event, the system will update this GSet for all users, and a new topic name will be shown in each user's browser page along with the "subscribe" button.
+        When a user clicks "subscribe", his <code>UserSocket</code> will send a <code>Subscribe</code> message to replicator (it first sends the <code>Get</code> message to get the history from GSet and then, when history arrives, it subscribes to LWWRegister). After that a user will communicate with others through the mediator by sending <code>Update</code> that update topic's GSet and LWWRegister with <code>ChatMessage</code> messages.
         The received ChatMessage is serialized and sent to <code>out</code>.
     </p>
 
     <p>
         For detailed information on this mechanism please check
-        <a href="http://doc.akka.io/docs/akka/2.4.0/scala/distributed-pub-sub.html#DistributedPubSub_Extension">documentation</a>
-        on Akka web page. Also take a look at Typesafe's
-        <a href="https://www.typesafe.com/activator/template/akka-clustering">activator template</a> for more example
-        use cases of <code>DistributedPubSub</code>.
+        <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">documentation</a>
+        on Akka web page.
     </p>
 
     <h3>A scenario of message distribution between nodes.</h3>
@@ -266,9 +334,9 @@
         <ol>
             <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocket</code> receives it</li>
             <li><b>A</b>'s <code>UserSocket</code> parses the message and sends to node <b>9001</b>'s
-                <code>DistributedPubSubMediator</code>
+                <code>Replicator</code>
             </li>
-            <li><code>DistributedPubSubMediator</code> sends the message to all <code>UserSocket</code>
+            <li><code>Replicator</code> sends the message to all <code>UserSocket</code>
                 cluster nodes (<b>9001</b>, <b>9002</b>, <b>9003</b>)
             </li>
             <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the
