@@ -55,16 +55,6 @@ init = ->
 topicNames = {}
 currentTopic = undefined
 
-strhash = (str) ->
-  if str.length == 0
-    return 0;
-  hash = 0
-  for i in [0...str.length]
-    chr = str.charCodeAt(i);
-    hash = ((hash << 5) - hash) + chr;
-    hash |= 0; 
-  return hash;
-
 $ ->
   init()
 
@@ -85,23 +75,18 @@ $ ->
         message.messages.forEach (msg) ->
           messages().append(messageOnLeft(msg.user, msg.text))
         messages().scrollTop(messages().prop("scrollHeight"))
+        console.log(message)
       when "message"
         messages().append(messageOnLeft(message.user, message.text))
         messages().scrollTop(messages().prop("scrollHeight"))
+      when "topicName"
+        topicNames[message.topicId] = message.topicName
+        topics().append(topicsOnLeft(message.topicName, message.topicId))
+        topics().scrollTop(topics().prop("scrollHeight"))
       when "topics"
-        topics().html("")
         message.topics.forEach (topic) ->
-          topicId = strhash(topic)
-          topicNames[topicId] = topic
-          topicEl = $(topicsOnLeft(topic, topicId))
-          if currentTopic && topic == currentTopic
-            el = topicEl.find('.subscribe')
-            el.addClass("active");
-            el.removeClass("label-default")
-            el.addClass("label-info")
-            el.prop "disabled", true
-            el.html "active"
-          topics().append(topicEl)
+          topicNames[topic.id] = topic.name
+          topics().append(topicsOnLeft(topic.name, topic.id))
         topics().scrollTop(topics().prop("scrollHeight"))
       else
         console.log(message)
