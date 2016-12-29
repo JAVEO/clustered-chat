@@ -1,7 +1,6 @@
 package actors
 
 import actors.UserSocket.Message
-import actors.ChatMessage
 import akka.actor._
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{SubscribeAck, Subscribe}
@@ -14,6 +13,7 @@ import scala.concurrent.duration._
 
 class UserSocketSpec extends Specification {
   val UserId = "user1"
+  val conf = utilit.Conf.get
 
   implicit val messageWrites = new Writes[Message] {
     def writes(message: Message) = Json.obj(
@@ -35,15 +35,15 @@ class UserSocketSpec extends Specification {
 
     "send chat message to all subscribers" in new AkkaTestkitSpecs2Support {
 
-
       val mediator = DistributedPubSub(system).mediator
+      // TODO mock actors.dbservice
 
       val browser = TestProbe()
       val chatMember1 = TestProbe()
       val chatMember2 = TestProbe()
       mediator ! Subscribe(topic, chatMember1.ref)
       mediator ! Subscribe(topic, chatMember2.ref)
-      val socket = system.actorOf(UserSocket.props("user1")(browser.ref), "userSocket")
+      val socket = system.actorOf(UserSocket.props("user1", conf)(browser.ref), "userSocket")
       
       val message = "hello"
 
@@ -57,13 +57,13 @@ class UserSocketSpec extends Specification {
 
     "forward chat message to browser" in new AkkaTestkitSpecs2Support {
       val browser = TestProbe()
-      val socket = system.actorOf(UserSocket.props(UserId)(browser.ref), "userSocket")
+      val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
       val text = "There is important thing to do!"
       val chatMessage = ChatMessage(topic, UserId, text)
 
       browser.expectNoMsg(6 seconds)
       socket ! Json.toJson(MsgSubscribe(topic))
-      browser.expectNoMsg(2 seconds)
+      browser.expectNoMsg(12 seconds)
       socket ! Json.toJson(Message(topic, text))
 
       browser.expectMsg(Json.toJson(chatMessage))

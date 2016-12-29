@@ -27,6 +27,8 @@ object ChatMessageWithCreationDate {
       (JsPath \ "text").read[String] and
       (JsPath \ "creationDate" \ "$date").read[Long]
     )(ChatMessageWithCreationDate.create _)
+
+  implicit val orderingByDate: Ordering[ChatMessageWithCreationDate] = Ordering.by[ChatMessageWithCreationDate, java.util.Date](_.creationDate)
 }
 
 

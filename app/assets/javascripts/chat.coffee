@@ -9,6 +9,7 @@ subscribeButton = -> $(".subscribe")
 conversation = -> $("#conversation #messages")
 messages = -> $("#messages")
 topics = -> $("#topics")
+messagesPager = -> $("#messages-pager")
 topicsPanel = -> $("#topics-panel .topics-panel")
 messageOnLeftTemplate = -> $("#message-on-left-template")
 topicsOnLeftTemplate = -> $("#topics-on-left-template")
@@ -33,6 +34,20 @@ resetForm = ->
 
 resetTopicForm = ->
   topicNameEl().val("")
+
+getDateToPager = (direction, msgs) ->
+  switch direction
+    when "older"
+      if !msgs.length
+        return "" + new Date().getTime()
+      return msgs[0].creationDate["$date"]
+    when "newer"
+      if !msgs.length
+        throw "cannot go to newer messages when there is no messages on page"
+      [..., last] = msgs
+      return last.creationDate["$date"]
+    else
+      throw "wrong pager direction (should be 'older' or 'newer', was '" + direction + "')"
 
 niceScrolls = ->
   conversation().niceScroll
@@ -66,6 +81,8 @@ $ ->
     messageOnLeft: Handlebars.compile(templateScript.messageOnLeft),
     topicsOnLeft: Handlebars.compile(templateScript.topicsOnLeft)
 
+  currentMessages = []
+
   ws = new WebSocket $("body").data("ws-url")
   ws.onmessage = (event) ->
     message = JSON.parse event.data
@@ -75,10 +92,12 @@ $ ->
         message.messages.forEach (msg) ->
           messages().append(messageOnLeft(msg.user, msg.text))
         messages().scrollTop(messages().prop("scrollHeight"))
+        currentMessages = message.messages
         console.log(message)
       when "message"
         messages().append(messageOnLeft(message.user, message.text))
         messages().scrollTop(messages().prop("scrollHeight"))
+        currentMessages.push(message)
       when "topicName"
         topicNames[message.topicId] = message.topicName
         topics().append(topicsOnLeft(message.topicName, message.topicId))
@@ -88,6 +107,8 @@ $ ->
           topicNames[topic.id] = topic.name
           topics().append(topicsOnLeft(topic.name, topic.id))
         topics().scrollTop(topics().prop("scrollHeight"))
+      when "messages pager timeout"
+        messages().html("service took too long to respond")
       else
         console.log(message)
 
@@ -102,7 +123,7 @@ $ ->
     ws.close()
 
   msgform().submit (event) ->
-  	if !currentTopic 
+  	if !currentTopic
   	  alert "You're not subscribed to any topic."
   	  return
     event.preventDefault()
@@ -149,7 +170,7 @@ $ ->
       oldActive.addClass("label-default")
       oldActive.prop "disabled", false
       oldActive.html "subscribe"
-    el.addClass("active");
+    el.addClass("active")
     el.removeClass("label-default")
     el.addClass("label-info")
     el.prop "disabled", true
@@ -171,3 +192,13 @@ $ ->
       event.preventDefault()
       if messageExists()
         msgform().submit()
+
+  messagesPager().on 'click', '.pager-link', (event) ->
+  	if !currentTopic
+  	  alert "You're not subscribed to any topic."
+  	  return
+    el = $(event.target)
+    direction = el.data("direction")
+    date = getDateToPager(direction, currentMessages)
+    message = { "type": "pager", "topic": currentTopic, "direction": direction, "date": date }
+    ws.send(JSON.stringify(message))
