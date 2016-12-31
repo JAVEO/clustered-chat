@@ -42,8 +42,6 @@ class DBServiceImpl extends Actor with ActorLogging {
   import actors.UserSocket._
   import scala.concurrent.ExecutionContext.Implicits.global
 
-  import actors.ChatMessageWithCreationDate.{chatMessageReads, chatMessageWrites}
-
   val reactiveMongoApi = Play.current.injector.instanceOf[ReactiveMongoApi]
   val conf = Play.current.injector.instanceOf[play.api.Configuration]
 
@@ -73,6 +71,8 @@ class DBServiceImpl extends Actor with ActorLogging {
       "creationDate" -> sorting
     )
   }
+
+  implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Mongo
 
   val mediator = DistributedPubSub(context.system).mediator
 

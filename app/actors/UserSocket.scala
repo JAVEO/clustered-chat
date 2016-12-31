@@ -90,6 +90,7 @@ object UserSocket {
 
     implicit val chatMessagesListWrites: Writes[ChatMessagesListMessage] = new Writes[ChatMessagesListMessage] {
       def writes(chatMessages: ChatMessagesListMessage): JsValue = {
+        implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Web
         Json.obj(
           "type" -> "messages",
           "messages" -> chatMessages.msgs,
