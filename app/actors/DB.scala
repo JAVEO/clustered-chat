@@ -32,13 +32,6 @@ object DBService extends SystemScoped {
   override lazy val instanceName = "db-service-actor"
 }
 
-object DBServiceMessages {
-
-  case object GetTopics
-
-  case object NoMessagesFound
-}
-
 case class Topic(name: String)
 
 object Topic {
@@ -46,7 +39,6 @@ object Topic {
 }
 
 class DBServiceImpl extends Actor with ActorLogging {
-  import DBServiceMessages._
   import actors.UserSocket._
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -140,7 +132,7 @@ class DBServiceImpl extends Actor with ActorLogging {
           }
           sndr ! ChatMessagesListMessage(query, isLast, msgsToSend)
         case Failure(_) =>
-          sndr ! NoMessagesFound
+          sndr ! NoMessagesFound(query)
       }
   }
 }

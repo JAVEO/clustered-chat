@@ -101,14 +101,15 @@ object UserSocket {
 
   }
 
-  case object InitialMessagesTimeout
-  case object MessagesPagerTimeout
+  case object GetTopics
+  case class NoMessagesFound(query: PagerQuery)
+
+  case class MessagesPagerTimeout(query: PagerQuery)
   case object InitialTopicsTimeout
 }
 
 class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) extends Actor with ActorLogging {
   import UserSocket._
-  import actors.DBServiceMessages._
   import scala.concurrent.ExecutionContext.Implicits.global
 
   val topicsTopic = conf.getString("my.special.string") + "topics"
@@ -116,7 +117,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
   var lastSubscribed: Option[String] = None
   var topicToSubscribe: Option[String] = None
   var scheduledTimeout: Option[Cancellable] = None
-  var initialHistory: Option[Set[ChatMessage]] = None
+  var lastQuery: Option[PagerQuery] = None
   val dbService = DBService(context.system).instance
 
   val mediator = DistributedPubSub(context.system).mediator
@@ -141,31 +142,30 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
       context become basic
   } orElse basic
 
-  def waitingForInitialMessages = LoggingReceive {
-    case c : ChatMessagesListMessage =>
-      subscribeToTopic()
-      cancelTimeout()
-      out ! Json.toJson(c)
-      context become basic
-    case NoMessagesFound =>
-      subscribeToTopic()
-      cancelTimeout()
-      context become basic
-    case InitialMessagesTimeout =>
-      subscribeToTopic()
-      context become basic
-  } orElse basic
+  def waitingForInitialMessages = waitingForMessages(true)
 
-  def waitingForPagedMessages = LoggingReceive {
-    case c : ChatMessagesListMessage =>
+  def waitingForPagedMessages = waitingForMessages(false)
+
+  def waitingForMessages(initial: Boolean) = LoggingReceive {
+    case c : ChatMessagesListMessage if lastQuery == Some(c.query) =>
+      if (initial) {
+        subscribeToTopic()
+      }
       cancelTimeout()
       out ! Json.toJson(c)
       context become basic
-    case NoMessagesFound =>
+    case NoMessagesFound(q) if lastQuery == Some(q) =>
+      if (initial) {
+        subscribeToTopic()
+      }
       cancelTimeout()
       context become basic
-    case MessagesPagerTimeout =>
-      out ! Json.obj("type" -> "messages pager timeout")
+    case MessagesPagerTimeout(q) if lastQuery == Some(q) =>
+      if (initial) {
+        subscribeToTopic()
+      } else {
+        out ! Json.obj("type" -> "messages pager timeout")
+      }
       context become basic
   } orElse basic
 
@@ -178,9 +178,11 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
           if (topic != null) {
             unsubscribe()
             topicToSubscribe = Some(topic)
-            dbService ! PagerQuery.initial(topic)
+            val query = PagerQuery.initial(topic)
+            lastQuery = Some(query)
+            dbService ! query
             cancelTimeout()
-            scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, InitialMessagesTimeout))
+            scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout(query)))
             context become waitingForInitialMessages
           }
         case "message" =>
@@ -195,8 +197,9 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
           js.validate[PagerQuery](PagerQuery.pagerQueryFormat)
             .foreach { q =>
               dbService ! q
+              lastQuery = Some(q)
               cancelTimeout()
-              scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout))
+              scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout(q)))
               context become waitingForPagedMessages
             }
       }
