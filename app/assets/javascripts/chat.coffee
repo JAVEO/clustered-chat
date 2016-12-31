@@ -9,7 +9,9 @@ subscribeButton = -> $(".subscribe")
 conversation = -> $("#conversation #messages")
 messages = -> $("#messages")
 topics = -> $("#topics")
-messagesPager = -> $("#messages-pager")
+olderButtonTemplate = -> $('#older-btn-template')
+olderButtonContainer = -> $('#older-btn-container')
+olderButton = -> $('#older-btn')
 topicsPanel = -> $("#topics-panel .topics-panel")
 messageOnLeftTemplate = -> $("#message-on-left-template")
 topicsOnLeftTemplate = -> $("#topics-on-left-template")
@@ -35,20 +37,6 @@ resetForm = ->
 resetTopicForm = ->
   topicNameEl().val("")
 
-getDateToPager = (direction, msgs) ->
-  switch direction
-    when "older"
-      if !msgs.length
-        return "" + new Date().getTime()
-      return msgs[0].creationDate["$date"]
-    when "newer"
-      if !msgs.length
-        throw "cannot go to newer messages when there is no messages on page"
-      [..., last] = msgs
-      return last.creationDate["$date"]
-    else
-      throw "wrong pager direction (should be 'older' or 'newer', was '" + direction + "')"
-
 niceScrolls = ->
   conversation().niceScroll
     background: "#eee"
@@ -67,44 +55,59 @@ init = ->
   disableConfirmButton()
   niceScrolls()
 
-topicNames = {}
-currentTopic = undefined
-
 $ ->
   init()
 
   templateScript =
     messageOnLeft: messageOnLeftTemplate().html(),
-    topicsOnLeft: topicsOnLeftTemplate().html()
+    topicsOnLeft: topicsOnLeftTemplate().html(),
+    olderButton: olderButtonTemplate().html()
 
   template =
     messageOnLeft: Handlebars.compile(templateScript.messageOnLeft),
-    topicsOnLeft: Handlebars.compile(templateScript.topicsOnLeft)
+    topicsOnLeft: Handlebars.compile(templateScript.topicsOnLeft),
+    olderButton: Handlebars.compile(templateScript.olderButton)
 
-  currentMessages = []
+  chatState = new ChatState
 
   ws = new WebSocket $("body").data("ws-url")
   ws.onmessage = (event) ->
     message = JSON.parse event.data
     switch message.type
       when "messages"
-        messages().html("")
-        message.messages.forEach (msg) ->
-          messages().append(messageOnLeft(msg.user, msg.text))
-        messages().scrollTop(messages().prop("scrollHeight"))
-        currentMessages = message.messages
-        console.log(message)
+        if message.query.topic != chatState.currentTopic
+          return
+        if chatState.oldestMessageState? and message.query.date != chatState.oldestMessageDate
+          return
+        chatState.handleNewMessages message
+        oldFirstMessageElem = messages().find(".chat-msg").first()
+        hadOldFirstElem = oldFirstMessageElem.length > 0
+        oldPositionTop = 0
+        if hadOldFirstElem
+          oldPositionTop = oldFirstMessageElem.position().top - messages().position().top
+        olderButtonCont = olderButtonContainer()
+        if olderButtonCont.length
+          olderButtonCont.remove()
+        messagesHeightOld = messages().prop("scrollHeight")
+        message.messages.slice().reverse().forEach (msg) ->
+          messages().prepend(messageOnLeft(msg.user, msg.text))
+        if not message.isLast
+          messages().prepend(template.olderButton())
+        if hadOldFirstElem
+          messagesHeightNew = messages().prop("scrollHeight")
+          messages().scrollTop(messagesHeightNew - messagesHeightOld - oldPositionTop)
+        else
+          messages().scrollTop(messages().prop("scrollHeight"))
       when "message"
         messages().append(messageOnLeft(message.user, message.text))
         messages().scrollTop(messages().prop("scrollHeight"))
-        currentMessages.push(message)
       when "topicName"
-        topicNames[message.topicId] = message.topicName
+        chatState.topicNames[message.topicId] = message.topicName
         topics().append(topicsOnLeft(message.topicName, message.topicId))
         topics().scrollTop(topics().prop("scrollHeight"))
       when "topics"
         message.topics.forEach (topic) ->
-          topicNames[topic.id] = topic.name
+          chatState.topicNames[topic.id] = topic.name
           topics().append(topicsOnLeft(topic.name, topic.id))
         topics().scrollTop(topics().prop("scrollHeight"))
       when "messages pager timeout"
@@ -123,11 +126,11 @@ $ ->
     ws.close()
 
   msgform().submit (event) ->
-  	if !currentTopic
+  	if !chatState.currentTopic
   	  alert "You're not subscribed to any topic."
   	  return
     event.preventDefault()
-    message = { type: "message", topic: currentTopic, msg: comment().val() }
+    message = { type: "message", topic: chatState.currentTopic, msg: comment().val() }
     if messageExists()
       ws.send(JSON.stringify(message))
       resetForm()
@@ -157,8 +160,8 @@ $ ->
   topics().on 'click', '.subscribe', (event) ->
     el = $(event.target)
     topicId = el.data("topic-id")
-    topicName = topicNames[topicId]
-    currentTopic = topicName
+    topicName = chatState.topicNames[topicId]
+    chatState.currentTopic = topicName
     message = {type: "subscribe", topic: topicName}
     ws.send(JSON.stringify(message))
     comment().prop "disabled", false
@@ -175,7 +178,7 @@ $ ->
     el.addClass("label-info")
     el.prop "disabled", true
     el.html "active"
-    currentTopicEl().html currentTopic
+    currentTopicEl().html chatState.currentTopic
     clearChat()
 
   clearChat = ->
@@ -184,7 +187,7 @@ $ ->
   key_enter = 13
 
   comment().keyup (event) ->
-    if currentTopic && messageExists()
+    if chatState.currentTopic? && messageExists()
       enableConfirmButton()
     else
       disableConfirmButton()
@@ -193,12 +196,25 @@ $ ->
       if messageExists()
         msgform().submit()
 
-  messagesPager().on 'click', '.pager-link', (event) ->
-  	if !currentTopic
+  messages().on 'click', '#older-btn', (event) ->
+  	if not chatState.currentTopic?
   	  alert "You're not subscribed to any topic."
   	  return
-    el = $(event.target)
-    direction = el.data("direction")
-    date = getDateToPager(direction, currentMessages)
-    message = { "type": "pager", "topic": currentTopic, "direction": direction, "date": date }
+    date = chatState.getDateToQueryOlder()
+    message = { "type": "pager", "topic": chatState.currentTopic, "direction": "older", "date": date }
+    olderButton().html("loading...")
     ws.send(JSON.stringify(message))
+
+class ChatState
+  constructor: () ->
+    @topicNames = {}
+    @currentTopic = undefined
+    @oldestMessageDate = undefined
+
+  handleNewMessages: (info) ->
+    [first, ...] = info.messages
+    if first?
+      @oldestMessageDate = first.creationDate["$date"]
+
+  getDateToQueryOlder: () ->
+    return @oldestMessageDate

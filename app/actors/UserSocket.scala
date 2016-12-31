@@ -6,7 +6,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Props, Cancellable}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, Unsubscribe}
 import akka.event.LoggingReceive
-import play.api.libs.json.{Writes, JsPath, JsValue, JsString, JsObject, JsArray, Json}
+import play.api.libs.json.{Format, Writes, JsPath, JsValue, JsString, JsObject, JsArray, Json, JsNull, JsError, JsSuccess}
 import play.twirl.api.HtmlFormat
 import play.api.libs.functional.syntax._
 
@@ -24,11 +24,31 @@ object UserSocket {
     implicit val messageReads = Json.reads[Message]
   }
 
-  case class PagerQuery(topic: String, direction: String, date: Long)
-
   object PagerQuery {
-    implicit val pagerQueryReads = Json.reads[PagerQuery]
+
+    val limit = 10
+
+    def initial(topic: String) = new PagerQuery(topic, Direction.Older, new java.util.Date().getTime)
+
+    object Direction extends Enumeration {
+      type Direction = Value
+      val Older, Newer = Value
+      def withLowercaseName(name: String) = this.withName(name.capitalize)
+    }
+
+    implicit val directionFormat = new Format[Direction.Value] {
+      def writes(d: Direction.Value) = JsString(d.toString.toLowerCase)
+      def reads(json: JsValue) = json match {
+        case JsNull => JsError()
+        case _ => JsSuccess(Direction.withLowercaseName(json.as[String]))
+      }
+    }
+
+    implicit val pagerQueryFormat = Json.format[PagerQuery]
+
   }
+
+  case class PagerQuery(topic: String, direction: PagerQuery.Direction.Value, date: Long)
 
   case class TopicNameMessage(topicName: String)
 
@@ -60,17 +80,25 @@ object UserSocket {
     }
   }
 
-  case class ChatMessagesListMessage(msgs: Seq[ChatMessageWithCreationDate])
+  case class ChatMessagesListMessage(
+    query: PagerQuery,
+    isLast: Boolean,
+    msgs: Seq[ChatMessageWithCreationDate])
 
   object ChatMessagesListMessage {
-    implicit val chatMessagesListWrites = new Writes[ChatMessagesListMessage] {
+    import PagerQuery._
+
+    implicit val chatMessagesListWrites: Writes[ChatMessagesListMessage] = new Writes[ChatMessagesListMessage] {
       def writes(chatMessages: ChatMessagesListMessage): JsValue = {
         Json.obj(
           "type" -> "messages",
-          "messages" -> JsArray(chatMessages.msgs.map(Json.toJson(_)))
+          "messages" -> chatMessages.msgs,
+          "query" -> Json.toJson(chatMessages.query),
+          "isLast" -> chatMessages.isLast
         )
       }
     }
+
   }
 
   case object InitialMessagesTimeout
@@ -86,6 +114,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
   val topicsTopic = conf.getString("my.special.string") + "topics"
   val messagesTopic = conf.getString("my.special.string") + "messages"
   var lastSubscribed: Option[String] = None
+  var topicToSubscribe: Option[String] = None
   var scheduledTimeout: Option[Cancellable] = None
   var initialHistory: Option[Set[ChatMessage]] = None
   val dbService = DBService(context.system).instance
@@ -102,21 +131,55 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
       context become waitingForInitialTopics
   }
 
-  val basic: Actor.Receive = LoggingReceive {
+  def waitingForInitialTopics = LoggingReceive {
+    case t : TopicsListMessage =>
+      out ! Json.toJson(t)
+      mediator ! Subscribe(topicsTopic, self)
+      context become basic
+    case InitialTopicsTimeout =>
+      mediator ! Subscribe(topicsTopic, self)
+      context become basic
+  } orElse basic
+
+  def waitingForInitialMessages = LoggingReceive {
+    case c : ChatMessagesListMessage =>
+      subscribeToTopic()
+      cancelTimeout()
+      out ! Json.toJson(c)
+      context become basic
+    case NoMessagesFound =>
+      subscribeToTopic()
+      cancelTimeout()
+      context become basic
+    case InitialMessagesTimeout =>
+      subscribeToTopic()
+      context become basic
+  } orElse basic
+
+  def waitingForPagedMessages = LoggingReceive {
+    case c : ChatMessagesListMessage =>
+      cancelTimeout()
+      out ! Json.toJson(c)
+      context become basic
+    case NoMessagesFound =>
+      cancelTimeout()
+      context become basic
+    case MessagesPagerTimeout =>
+      out ! Json.obj("type" -> "messages pager timeout")
+      context become basic
+  } orElse basic
+
+  def basic: Actor.Receive = LoggingReceive {
     case JsString(topicName) => mediator ! Publish(topicsTopic, TopicNameMessage(topicName))
     case js: JsValue =>
       ((js \ "type").as[String]) match {
         case "subscribe" =>
           val topic = (js \ "topic").as[String]
           if (topic != null) {
-            lastSubscribed foreach { oldTopic =>
-              mediator ! Unsubscribe(oldTopic, self)
-            }
-            lastSubscribed = Some(topic)
-            dbService ! GetMessages.initial(topic, 10)
-            scheduledTimeout foreach { t =>
-              t.cancel()
-            }
+            unsubscribe()
+            topicToSubscribe = Some(topic)
+            dbService ! PagerQuery.initial(topic)
+            cancelTimeout()
             scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, InitialMessagesTimeout))
             context become waitingForInitialMessages
           }
@@ -129,12 +192,10 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
               mediator ! Publish(messagesTopic, chatMessage)
             }
         case "pager" =>
-          js.validate[PagerQuery](PagerQuery.pagerQueryReads)
+          js.validate[PagerQuery](PagerQuery.pagerQueryFormat)
             .foreach { q =>
-              dbService ! GetMessages(q)
-              scheduledTimeout foreach { t =>
-                t.cancel()
-              }
+              dbService ! q
+              cancelTimeout()
               scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout))
               context become waitingForPagedMessages
             }
@@ -144,63 +205,26 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
     case t : TopicNameMessage => out ! Json.toJson(t)
   }
 
-  val waitingForInitialTopics = LoggingReceive {
-    case t : TopicsListMessage =>
-      scheduledTimeout foreach { t =>
-        t.cancel()
-      }
-      out ! Json.toJson(t)
-      mediator ! Subscribe(topicsTopic, self)
-      context become basic
-    case InitialTopicsTimeout =>
-      mediator ! Subscribe(topicsTopic, self)
-      context become basic
-  } orElse basic
-
-  val waitingForInitialMessages = LoggingReceive {
-    case c : ChatMessagesListMessage =>
-      lastSubscribed foreach { topicNotSubscribedYet =>
-        mediator ! Subscribe(topicNotSubscribedYet, self)
-      }
-      scheduledTimeout foreach { t =>
-        t.cancel()
-      }
-      out ! Json.toJson(c)
-      context become basic
-    case NoMessagesFound =>
-      lastSubscribed foreach { topicNotSubscribedYet =>
-        mediator ! Subscribe(topicNotSubscribedYet, self)
-      }
-      scheduledTimeout foreach { t =>
-        t.cancel()
-      }
-      context become basic
-    case InitialMessagesTimeout =>
-      lastSubscribed foreach { topicNotSubscribedYet =>
-        mediator ! Subscribe(topicNotSubscribedYet, self)
-      }
-      context become basic
-  } orElse basic
-
-  val waitingForPagedMessages = LoggingReceive {
-    case c : ChatMessagesListMessage =>
-      scheduledTimeout foreach { t =>
-        t.cancel()
-      }
-      out ! Json.toJson(c)
-      context become basic
-    case NoMessagesFound =>
-      scheduledTimeout foreach { t =>
-        t.cancel()
-      }
-      context become basic
-    case MessagesPagerTimeout =>
-      out ! Json.obj("type" -> "messages pager timeout")
-      context become basic
-  } orElse basic
-
   def isSubscribedTo(topic: String): Boolean = lastSubscribed match {
     case None => false
     case Some(subscribedTopic) => subscribedTopic == topic
+  }
+
+  def unsubscribe() {
+    lastSubscribed foreach { oldTopic =>
+      mediator ! Unsubscribe(oldTopic, self)
+    }
+    lastSubscribed = None
+  }
+
+  def subscribeToTopic() {
+    topicToSubscribe foreach { topic =>
+      mediator ! Subscribe(topic, self)
+      lastSubscribed = Some(topic)
+    }
+  }
+
+  def cancelTimeout() {
+    scheduledTimeout.foreach(_.cancel())
   }
 }

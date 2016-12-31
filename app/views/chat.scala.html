@@ -39,8 +39,19 @@
                         <div id="messages">
                         </div>
                         @handlebars("message-on-left-template") {
+                          <div class="chat-msg">
                             <p class="conversation_comment bold">{{{user}}}</p>
                             <p class="conversation_comment">{{{message}}}</p>
+                          </div>
+                        }
+                        @handlebars("older-btn-template") {
+                          <div id="older-btn-container">
+                            <div>
+                              <span id="older-btn" class="label label-default">
+                                Older
+                              </span>
+                            </div>
+                          </div>
                         }
                     </div>
                 </div>

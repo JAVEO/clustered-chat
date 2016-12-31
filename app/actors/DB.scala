@@ -36,29 +36,6 @@ object DBServiceMessages {
 
   case object GetTopics
 
-  case class GetInitialMessages(topic: String, limit: Int)
-
-  object GetMessages {
-
-    object Direction extends Enumeration {
-      type Direction = Value
-      val Older, Newer = Value
-      def withLowercaseName(name: String) = this.withName(name.capitalize)
-    }
-
-    import UserSocket.PagerQuery
-
-    def apply(query : PagerQuery) = 
-      new GetMessages(query.topic, Direction.withLowercaseName(query.direction), new java.util.Date(query.date), 10)
-
-    def initial(topic: String, limit: Int) = new GetMessages(topic, limit = limit, direction = Direction.Older, date = new java.util.Date())
-
-  }
-
-  import GetMessages.Direction
-
-  case class GetMessages(topic: String, direction: Direction.Value, date: java.util.Date, limit: Int)
-
   case object NoMessagesFound
 }
 
@@ -71,7 +48,6 @@ object Topic {
 class DBServiceImpl extends Actor with ActorLogging {
   import DBServiceMessages._
   import actors.UserSocket._
-  import GetMessages.Direction
   import scala.concurrent.ExecutionContext.Implicits.global
 
   import actors.ChatMessageWithCreationDate.{chatMessageReads, chatMessageWrites}
@@ -81,25 +57,25 @@ class DBServiceImpl extends Actor with ActorLogging {
 
   def coll(name: String) = reactiveMongoApi.database.map(_.collection[JSONCollection](name))
 
-  def buildQuery(topic: String, date: java.util.Date, direction: Direction.Value) : BSONDocument = {
+  def buildQuery(topic: String, date: Long, direction: PagerQuery.Direction.Value) : BSONDocument = {
     val op = direction match {
-      case Direction.Older =>
-        "$lte"
-      case Direction.Newer =>
-        "$gte"
+      case PagerQuery.Direction.Older =>
+        "$lt"
+      case PagerQuery.Direction.Newer =>
+        "$gt"
     }
     return BSONDocument(
       "topic" -> topic,
       "creationDate" -> BSONDocument(
-        op -> BSONDateTime(date.getTime)
+        op -> BSONDateTime(date)
         )
       )
   }
 
-  def byDate(direction: Direction.Value) = {
+  def byDate(direction: PagerQuery.Direction.Value) = {
     val sorting = direction match {
-      case Direction.Older => -1
-      case Direction.Newer => 1
+      case PagerQuery.Direction.Older => -1
+      case PagerQuery.Direction.Newer => 1
     }
     Json.obj(
       "creationDate" -> sorting
@@ -142,7 +118,8 @@ class DBServiceImpl extends Actor with ActorLogging {
         case Failure(_) =>
           sndr ! TopicsListMessage(List.empty[String])
       }
-    case msg @ GetMessages(topic, direction, date, limit) =>
+    case query @ PagerQuery(topic, direction, date) =>
+      import PagerQuery.limit
       val sndr = sender
       val msgsFuture = for {
         messagesColl <- coll("messages")
@@ -150,12 +127,18 @@ class DBServiceImpl extends Actor with ActorLogging {
           .find(buildQuery(topic, date, direction))
           .sort(byDate(direction))
           .cursor[ChatMessageWithCreationDate]()
-          .collect[List](limit)
-      } yield messages
+          .collect[Array](limit + 1)
+        sortedMessages = messages.sorted
+      } yield sortedMessages
       
       msgsFuture onComplete {
         case Success(msgs) =>
-          sndr ! ChatMessagesListMessage(msgs.sorted)
+          val isLast = msgs.length < limit
+          val msgsToSend = if (isLast) msgs else query.direction match {
+            case PagerQuery.Direction.Newer => msgs.init
+            case PagerQuery.Direction.Older => msgs.tail
+          }
+          sndr ! ChatMessagesListMessage(query, isLast, msgsToSend)
         case Failure(_) =>
           sndr ! NoMessagesFound
       }
