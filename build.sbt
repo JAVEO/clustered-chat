@@ -16,7 +16,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test,
   "org.webjars" %% "webjars-play" % "2.4.0",
   "org.webjars" % "bootstrap" % "3.3.4",
-  "org.webjars" % "jquery" % "2.1.4",
+  "org.webjars" % "font-awesome" % "4.7.0",
+  "org.webjars" % "jquery" % "2.2.4",
   "org.webjars" % "handlebars" % "4.0.2",
   specs2 % Test
 )

@@ -80,6 +80,22 @@ object UserSocket {
     }
   }
 
+  case class SingleMessage(msg: ChatMessageWithCreationDate)
+
+  object SingleMessage {
+
+    implicit val chatMessagesListWrites: Writes[SingleMessage] = new Writes[SingleMessage] {
+      def writes(singleMessage: SingleMessage): JsValue = {
+        implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Web
+        Json.obj(
+          "type" -> "message",
+          "msg" -> singleMessage.msg
+        )
+      }
+    }
+
+  }
+
   case class ChatMessagesListMessage(
     query: PagerQuery,
     isLast: Boolean,
@@ -103,6 +119,7 @@ object UserSocket {
   }
 
   case object GetTopics
+  case object NoTopicsFound
   case class NoMessagesFound(query: PagerQuery)
 
   case class MessagesPagerTimeout(query: PagerQuery)
@@ -135,11 +152,16 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
 
   def waitingForInitialTopics = LoggingReceive {
     case t : TopicsListMessage =>
-      out ! Json.toJson(t)
       mediator ! Subscribe(topicsTopic, self)
+      out ! Json.toJson(t)
+      context become basic
+    case NoTopicsFound =>
+      mediator ! Subscribe(topicsTopic, self)
+      out ! Json.obj("type" -> "no topics found")
       context become basic
     case InitialTopicsTimeout =>
       mediator ! Subscribe(topicsTopic, self)
+      out ! Json.obj("type" -> "initial topics timeout")
       context become basic
   } orElse basic
 
@@ -150,23 +172,29 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
   def waitingForMessages(initial: Boolean) = LoggingReceive {
     case c : ChatMessagesListMessage if lastQuery == Some(c.query) =>
       if (initial) {
-        subscribeToTopic()
+        //subscribeToTopic()
       }
       cancelTimeout()
+      Thread.sleep(3000)
       out ! Json.toJson(c)
       context become basic
     case NoMessagesFound(q) if lastQuery == Some(q) =>
       if (initial) {
-        subscribeToTopic()
+        //subscribeToTopic()
       }
+      out ! Json.obj("type" -> "no messages found")
       cancelTimeout()
+      Thread.sleep(3000)
       context become basic
     case MessagesPagerTimeout(q) if lastQuery == Some(q) =>
+      /*
       if (initial) {
         subscribeToTopic()
       } else {
         out ! Json.obj("type" -> "messages pager timeout")
       }
+      */
+      out ! Json.obj("type" -> "messages pager timeout")
       context become basic
   } orElse basic
 
@@ -179,6 +207,8 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
           if (topic != null) {
             unsubscribe()
             topicToSubscribe = Some(topic)
+            subscribeToTopic()
+            Thread.sleep(10000)
             val query = PagerQuery.initial(topic)
             lastQuery = Some(query)
             dbService ! query
@@ -190,7 +220,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
           js.validate[Message](messageReads)
             .map(message => (message.topic, Utility.escape(message.msg)))
             .foreach { case (topic, msg) => 
-              val chatMessage = ChatMessage(topic, uid, msg)
+              val chatMessage = ChatMessage(topic, uid, msg).withCreationDate(new java.util.Date())
               mediator ! Publish(topic, chatMessage)
               mediator ! Publish(messagesTopic, chatMessage)
             }
@@ -204,8 +234,9 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
               context become waitingForPagedMessages
             }
       }
-    case c @ ChatMessage(topic, _, _) if isSubscribedTo(topic) =>
-      out ! Json.toJson(c)
+    case c @ ChatMessageWithCreationDate(ChatMessage(topic, _, _), _) if isSubscribedTo(topic) =>
+      implicit val writeMode = ChatMessageWithCreationDate.WriteMode.Web
+      out ! Json.toJson(SingleMessage(c))
     case t : TopicNameMessage => out ! Json.toJson(t)
   }
 

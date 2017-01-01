@@ -1,38 +1,92 @@
-body {
-  -webkit-background-size: cover;
-  -moz-background-size: cover;
-  -o-background-size: cover;
-  background-size: cover;
-
-  height: 100%;
-  background: #060 url(https://www.playframework.com/assets/images/logos/play_full_color.png) no-repeat fixed right bottom;
-  background-size: 10%;
+html, body {
+  overflow-x: hidden; /* Prevent scroll on narrow devices */
 }
 
-#wrap {
-  margin-top: 20px;
-  margin-bottom: 50px;
+body {
+  padding-top: 70px;
+}
+
+footer {
+  padding: 30px 0;
+}
+
+
+/*
+ * Off Canvas
+ * --------------------------------------------------
+ */
+
+@media screen and (max-width: 767px) {
+	.row-offcanvas {
+		position: relative;
+		-webkit-transition: all .25s ease-out;
+					-o-transition: all .25s ease-out;
+						transition: all .25s ease-out;
+		overflow: hidden;
+	}
+
+	.sidebar-offcanvas {
+		position: absolute;
+		display: none;
+	}
+
+	.row-offcanvas-right {
+		right: 0;
+	}
+
+	.row-offcanvas-right.active
+	.content-offcanvas {
+		position: absolute;
+		right: 0;
+		top: 0;
+		z-index: -1;
+	}
+
+	.row-offcanvas-right.active
+	.sidebar-offcanvas {
+		position: static;
+		display: block;  
+		padding-left: 0;
+
+    .sidebar-content {
+      display: table-row;
+    }
+
+    .sidebar-body {
+      display: table-cell;
+    }
+
+		.sidebar-hide-button-container {
+		  display: table-cell;
+      width: 10px;
+      height: 30px;
+		}
+	}
+
+	.row-offcanvas.active #show-topics-btn {
+	  display: none;
+	}
+}
+
+//#wrap {
+//  margin-top: 20px;
+//  margin-bottom: 50px;
+//}
+//
+
+.content-offcanvas {
+  padding-bottom: 20px;
+}
+.chat-content-container {
+  height: auto;
 }
 
 .bold {
   font-weight: bold;
 }
 
-p.conversation_comment {
-  margin-right: 10px;
-}
-
-#messages, #topics {
-  overflow: hidden;
-  height: 60vh;
-}
-
-#topics .subscribe {
-  cursor: pointer;
-}
-
-#topics:last-child {
-  height: 100%;
+#messages {
+  height: auto;
 }
 
 .chatname-container {
@@ -40,6 +94,42 @@ p.conversation_comment {
   max-height: 15px;
   width: 50%;
   text-align: right;
+}
+
+.sidebar-body {
+  background-color: White;
+}
+
+.sidebar-hide-button-container {
+  display: none;
+  width: 0;
+
+  button {
+    position: absolute;
+    top: 0;
+    background-color: White;
+  }
+
+}
+
+#conversation {
+  position: static;
+  padding: 0 10px;
+}
+
+.chat-msg {
+  border-top: 1px solid LightGray;
+  padding: 5px 0;
+}
+
+.comment-author {
+  text-align: right;
+}
+
+#sendMessageButton {
+  position: absolute;
+  top: 0;
+  right: 0;
 }
 
 #topicform  #topicName {
@@ -63,3 +153,4 @@ p.conversation_comment {
   background-color: Gray;
   cursor: pointer;
 }
+

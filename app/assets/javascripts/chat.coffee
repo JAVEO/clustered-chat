@@ -1,3 +1,8 @@
+$(document).ready () ->
+  $('[data-toggle="offcanvas"]').click () ->
+    $('.row-offcanvas').toggleClass('active')
+
+body = -> $("body")
 msgform = -> $("#msgform")
 createTopicForm = -> $("#topicform")
 comment = -> $("#comment")
@@ -5,10 +10,9 @@ topicNameEl = -> $("#topicName")
 currentTopicEl = -> $("#current-topic")
 confirmButton = -> $("#sendMessageButton")
 createTopicButton = -> $("#createTopicButton")
-subscribeButton = -> $(".subscribe")
-conversation = -> $("#conversation #messages")
 messages = -> $("#messages")
 topics = -> $("#topics")
+topicFormTemplate = -> $('#topic-form-template')
 olderButtonTemplate = -> $('#older-btn-template')
 olderButtonContainer = -> $('#older-btn-container')
 olderButton = -> $('#older-btn')
@@ -37,23 +41,8 @@ resetForm = ->
 resetTopicForm = ->
   topicNameEl().val("")
 
-niceScrolls = ->
-  conversation().niceScroll
-    background: "#eee"
-    cursorcolor: "#ddd"
-    cursorwidth: "10px"
-    autohidemode: false
-    horizrailenabled: false
-  topics().niceScroll
-    background: "#eee"
-    cursorcolor: "#ddd"
-    cursorwidth: "10px"
-    autohidemode: false
-    horizrailenabled: false
-
 init = ->
   disableConfirmButton()
-  niceScrolls()
 
 $ ->
   init()
@@ -61,12 +50,14 @@ $ ->
   templateScript =
     messageOnLeft: messageOnLeftTemplate().html(),
     topicsOnLeft: topicsOnLeftTemplate().html(),
-    olderButton: olderButtonTemplate().html()
+    olderButton: olderButtonTemplate().html(),
+    topicForm: topicFormTemplate().html()
 
   template =
     messageOnLeft: Handlebars.compile(templateScript.messageOnLeft),
     topicsOnLeft: Handlebars.compile(templateScript.topicsOnLeft),
-    olderButton: Handlebars.compile(templateScript.olderButton)
+    olderButton: Handlebars.compile(templateScript.olderButton),
+    topicForm: Handlebars.compile(templateScript.topicForm)
 
   chatState = new ChatState
 
@@ -77,39 +68,75 @@ $ ->
       when "messages"
         if message.query.topic != chatState.currentTopic
           return
-        if chatState.oldestMessageState? and message.query.date != chatState.oldestMessageDate
+        if chatState.oldestMessageDate? and message.query.date != chatState.oldestMessageDate
           return
-        chatState.handleNewMessages message
+        if chatState.isLoadingInitialMessages or chatState.noMessages?
+          messages().html("")
         oldFirstMessageElem = messages().find(".chat-msg").first()
-        hadOldFirstElem = oldFirstMessageElem.length > 0
-        oldPositionTop = 0
-        if hadOldFirstElem
-          oldPositionTop = oldFirstMessageElem.position().top - messages().position().top
-        olderButtonCont = olderButtonContainer()
-        if olderButtonCont.length
-          olderButtonCont.remove()
-        messagesHeightOld = messages().prop("scrollHeight")
-        message.messages.slice().reverse().forEach (msg) ->
-          messages().prepend(messageOnLeft(msg.user, msg.text))
-        if not message.isLast
-          messages().prepend(template.olderButton())
-        if hadOldFirstElem
-          messagesHeightNew = messages().prop("scrollHeight")
-          messages().scrollTop(messagesHeightNew - messagesHeightOld - oldPositionTop)
-        else
-          messages().scrollTop(messages().prop("scrollHeight"))
+        chatState.handleNewMessages message, (msgs) ->
+          hadOldFirstElem = oldFirstMessageElem.length > 0
+          if not hadOldFirstElem
+            msgs.slice().reverse().forEach (msg) ->
+              messages().prepend(messageOnLeft(msg.user, msg.text))
+            if not message.isLast
+              messages().prepend(template.olderButton())
+            body().scrollTop(body().prop("scrollHeight"))
+            return
+          oldScrollTop = $(window).scrollTop()
+          olderButtonCont = olderButtonContainer()
+          scrollDelta = 0
+          if olderButtonCont.length
+            scrollDelta -= olderButtonContainer().outerHeight()
+            olderButtonCont.remove()
+          if chatState.newMessageArrivedWhileLoading?
+            messages().html("")
+          msgs.slice().reverse().forEach (msg) ->
+            elem = $(messageOnLeft(msg.user, msg.text))
+            messages().prepend(elem)
+            scrollDelta += elem.outerHeight()
+          if not message.isLast
+            elem = $(template.olderButton())
+            messages().prepend(elem)
+            scrollDelta += elem.outerHeight()
+          $(window).scrollTop(oldScrollTop + scrollDelta)
       when "message"
-        messages().append(messageOnLeft(message.user, message.text))
+        if chatState.noMessages
+          messages().html("")
+        chatState.handleNewMessage message
+        messages().append(messageOnLeft(message.msg.user, message.msg.text))
         messages().scrollTop(messages().prop("scrollHeight"))
       when "topicName"
         chatState.topicNames[message.topicId] = message.topicName
+        if chatState.noTopics
+          topics().html("")
+          topics().append(template.topicForm())
+        chatState.handleNewTopic message
         topics().append(topicsOnLeft(message.topicName, message.topicId))
         topics().scrollTop(topics().prop("scrollHeight"))
       when "topics"
+        topics().html("")
+        topics().append(template.topicForm())
+        chatState.handleTopicsList(message.topics)
         message.topics.forEach (topic) ->
           chatState.topicNames[topic.id] = topic.name
           topics().append(topicsOnLeft(topic.name, topic.id))
         topics().scrollTop(topics().prop("scrollHeight"))
+      when "no topics found"
+        chatState.handleNoTopics()
+        topics().html("")
+        topics().append(template.topicForm())
+        topics().append("No topics")
+      when "initial topics timeout"
+        topics().html("")
+        topics().append(template.topicForm())
+        topics().append("No topics found")
+      when "no messages found"
+        if chatState.isLoadingInitialMessages
+          if chatState.newMessageArrivedWhileLoading?
+            messages().find("#older-btn").first().html("Older")
+          else
+            messages().html("No messages in this topic")
+        chatState.handleNoMessages
       when "messages pager timeout"
         messages().html("service took too long to respond")
       else
@@ -158,31 +185,20 @@ $ ->
     topicId: topicId
 
   topics().on 'click', '.subscribe', (event) ->
+    event.preventDefault()
     el = $(event.target)
     topicId = el.data("topic-id")
     topicName = chatState.topicNames[topicId]
-    chatState.currentTopic = topicName
+    chatState.handleTopicChange topicName
     message = {type: "subscribe", topic: topicName}
     ws.send(JSON.stringify(message))
     comment().prop "disabled", false
     enableConfirmButton()
-    oldActive = topics().find(".subscribe.active")
-    if oldActive
-      oldActive.removeClass("active")
-      oldActive.removeClass("label-info")
-      oldActive.addClass("label-default")
-      oldActive.prop "disabled", false
-      oldActive.html "subscribe"
+    $('.row-offcanvas').removeClass('active')
+    topics().find(".active").removeClass("active")
     el.addClass("active")
-    el.removeClass("label-default")
-    el.addClass("label-info")
-    el.prop "disabled", true
-    el.html "active"
     currentTopicEl().html chatState.currentTopic
-    clearChat()
-
-  clearChat = ->
-    messages().html("")
+    messages().html("Loading messages...")
 
   key_enter = 13
 
@@ -211,10 +227,126 @@ class ChatState
     @currentTopic = undefined
     @oldestMessageDate = undefined
 
-  handleNewMessages: (info) ->
+  handleNewTopic: (info) ->
+    if @noTopics?
+      delete @noTopics
+
+  handleTopicsList: (lst) ->
+    if lst.length
+      if @noTopics?
+        delete @noTopics
+    else
+      this.handleNoTopics()
+
+  handleNoTopics: ->
+    @noTopics = true
+
+  handleNewMessage: (info) ->
+    if @noMessages?
+      @oldestMessageDate = info.creationDate
+      delete @noMessages
+    if @isLoadingInitialMessages?
+      @newMessageArrivedWhileLoading = true
+      if not @fastMessages?
+        @fastMessages = []
+      @fastMessages.push(info.msg)
+
+  handleNewMessages: (info, func) ->
+    msgs = info.messages
+    if @isLoadingInitialMessages? and @newMessageArrivedWhileLoading?
+      msgs = this.mergeMessages(msgs, @fastMessages)
+      delete @fastMessages
+
+    func(msgs)
+
     [first, ...] = info.messages
     if first?
-      @oldestMessageDate = first.creationDate["$date"]
+      @oldestMessageDate = first.creationDate
+    if @isLoadingInitialMessages?
+      delete @isLoadingInitialMessages
+      if @newMessageArrivedWhileLoading?
+        delete @newMessageArrivedWhileLoading
+    if @noMessages?
+      delete @noMessages
+
+  handleNoMessages: ->
+    @noMessages = true
+    if @isLoadingInitialMessages?
+      delete @isLoadingInitialMessages
 
   getDateToQueryOlder: () ->
     return @oldestMessageDate
+
+  handleTopicChange: (topicName) ->
+    @isLoadingInitialMessages = true
+    @currentTopic = topicName
+    @oldestMessageDate = undefined
+
+  mergeMessages: (initialMsgs, fastMsgs) ->
+    msgs = [initialMsgs..., fastMsgs...]
+    msgs.sort (a, b) ->
+      a.creationDate - b.creationDate
+    [head, tail...] = msgs
+    result = tail.reduce (arr, elem) ->
+      [..., last] = arr
+      if not shallowEquals(last, elem)
+        arr.push(elem)
+      arr
+    , [head]
+    result
+
+shallowEquals = (a, b) ->
+  akeys = Object.getOwnPropertyNames(a)
+  bkeys = Object.getOwnPropertyNames(b)
+  if akeys.length != bkeys.length
+    return false
+  hadUndefineds = false
+  result = akeys.reduce (res, key) =>
+    if not res
+      return false
+    aval = a[key]
+    if aval != b[key]
+      return false
+    if aval == undefined
+      hadUndefineds = true
+    res
+  , true
+  if not result
+    return false
+  if not hadUndefineds
+    return true
+  else
+    equalAsSets(akeys, bkeys)
+
+equalAsSets = (a, b) ->
+  if a.length != b.length
+    return false
+  func = (first, second) ->
+    if first > second
+      1
+    else if second > first
+      -1
+    else
+      0
+  return "#{a.sort(func)}" == "#{b.sort(func)}"
+
+
+getOffsetMinusScroll = ( el ) ->
+    _x = 0
+    _y = 0
+    while el? && !isNaN( el.offsetLeft ) && !isNaN( el.offsetTop )
+        _x += el.offsetLeft - el.scrollLeft
+        _y += el.offsetTop - el.scrollTop
+        el = el.offsetParent
+    return { top: _y, left: _x }
+
+getOffset = ( el ) ->
+    _x = 0
+    _y = 0
+    while el? && !isNaN( el.offsetLeft ) && !isNaN( el.offsetTop )
+        _x += el.offsetLeft
+        _y += el.offsetTop
+        el = el.offsetParent
+    return { top: _y, left: _x }
+
+window.getOffset = getOffset

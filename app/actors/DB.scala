@@ -83,10 +83,10 @@ class DBServiceImpl extends Actor with ActorLogging {
 
 
   def receive = LoggingReceive {
-    case c @ ChatMessage(topicName, _, _) => 
+    case c @ ChatMessageWithCreationDate(ChatMessage(topicName, _, _), _) => 
       for {
         messagesColl <- coll("messages")
-        result <- messagesColl.insert(c.createdNow)
+        result <- messagesColl.insert(c)
       } {
         // do nothing
       }
@@ -105,10 +105,12 @@ class DBServiceImpl extends Actor with ActorLogging {
       } yield topics
 
       topicsFuture onComplete {
+        case Success(topics) if topics.isEmpty =>
+          sndr ! NoTopicsFound
         case Success(topics) =>
           sndr ! TopicsListMessage(topics.map(_.name))
         case Failure(_) =>
-          sndr ! TopicsListMessage(List.empty[String])
+          sndr ! NoTopicsFound
       }
     case query @ PagerQuery(topic, direction, date) =>
       import PagerQuery.limit
@@ -124,6 +126,8 @@ class DBServiceImpl extends Actor with ActorLogging {
       } yield sortedMessages
       
       msgsFuture onComplete {
+        case Success(msgs) if msgs.isEmpty =>
+          sndr ! NoMessagesFound(query)
         case Success(msgs) =>
           val isLast = msgs.length < limit
           val msgsToSend = if (isLast) msgs else query.direction match {

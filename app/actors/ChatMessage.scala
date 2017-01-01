@@ -16,17 +16,19 @@ object ChatMessageWithCreationDate extends Helper {
 
   implicit def chatMessageWrites(implicit mode: WriteMode.Value) = {
     new OWrites[ChatMessageWithCreationDate] {
-      def writes(chatMessage: ChatMessageWithCreationDate): JsObject = {
-        val text = mode match {
-          case WriteMode.Mongo => chatMessage.msg.text
-          case WriteMode.Web => multiLine(chatMessage.msg.text)
-        }
-        Json.obj(
-          "topic" -> chatMessage.msg.topic,
-          "user" -> chatMessage.msg.user,
-          "text" -> text,
-          "creationDate" -> Json.obj("$date" -> chatMessage.creationDate.getTime)
-        )
+      def writes(chatMessage: ChatMessageWithCreationDate): JsObject = mode match {
+        case WriteMode.Web => Json.obj(
+            "topic" -> chatMessage.msg.topic,
+            "user" -> chatMessage.msg.user,
+            "text" -> multiLine(chatMessage.msg.text),
+            "creationDate" -> chatMessage.creationDate.getTime)
+
+        case WriteMode.Mongo => Json.obj(
+            "topic" -> chatMessage.msg.topic,
+            "user" -> chatMessage.msg.user,
+            "text" -> chatMessage.msg.text,
+            "creationDate" -> Json.obj(
+              "$date" -> chatMessage.creationDate.getTime))
       }
     }
   }
