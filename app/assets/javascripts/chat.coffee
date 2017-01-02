@@ -11,8 +11,10 @@ currentTopicEl = -> $("#current-topic")
 confirmButton = -> $("#sendMessageButton")
 createTopicButton = -> $("#createTopicButton")
 messages = -> $("#messages")
+messagesInfo = -> $("#messages .messages-info")
 topics = -> $("#topics")
 topicFormTemplate = -> $('#topic-form-template')
+messagesInfoTemplate = -> $('#messages-info-template')
 olderButtonTemplate = -> $('#older-btn-template')
 olderButtonContainer = -> $('#older-btn-container')
 olderButton = -> $('#older-btn')
@@ -51,13 +53,15 @@ $ ->
     messageOnLeft: messageOnLeftTemplate().html(),
     topicsOnLeft: topicsOnLeftTemplate().html(),
     olderButton: olderButtonTemplate().html(),
-    topicForm: topicFormTemplate().html()
+    topicForm: topicFormTemplate().html(),
+    messagesInfo: messagesInfoTemplate().html(),
 
   template =
     messageOnLeft: Handlebars.compile(templateScript.messageOnLeft),
     topicsOnLeft: Handlebars.compile(templateScript.topicsOnLeft),
     olderButton: Handlebars.compile(templateScript.olderButton),
-    topicForm: Handlebars.compile(templateScript.topicForm)
+    topicForm: Handlebars.compile(templateScript.topicForm),
+    messagesInfo: Handlebars.compile(templateScript.messagesInfo)
 
   chatState = new ChatState
 
@@ -100,7 +104,7 @@ $ ->
             scrollDelta += elem.outerHeight()
           $(window).scrollTop(oldScrollTop + scrollDelta)
       when "message"
-        if chatState.noMessages
+        if chatState.noMessages?
           messages().html("")
         chatState.handleNewMessage message
         messages().append(messageOnLeft(message.msg.user, message.msg.text))
@@ -133,12 +137,14 @@ $ ->
       when "no messages found"
         if chatState.isLoadingInitialMessages
           if chatState.newMessageArrivedWhileLoading?
-            messages().find("#older-btn").first().html("Older")
+            showMessagesInfo("No initial messages found", 3000)
           else
-            messages().html("No messages in this topic")
-        chatState.handleNoMessages
+            showMessagesInfoOnly("No messages in this topic")
+        chatState.handleNoMessages()
       when "messages pager timeout"
-        messages().html("service took too long to respond")
+        showMessagesInfo("service took too long to respond")
+      when "init error"
+        showMessagesInfoOnly("there was an error while initializing the service")
       else
         console.log(message)
 
@@ -153,7 +159,7 @@ $ ->
     ws.close()
 
   msgform().submit (event) ->
-  	if !chatState.currentTopic
+  	if not chatState.currentTopic?
   	  alert "You're not subscribed to any topic."
   	  return
     event.preventDefault()
@@ -184,6 +190,25 @@ $ ->
     topicName: topic,
     topicId: topicId
 
+  showMessagesInfoOnly = (text, millis) ->
+    doShowMessagesInfo(text, millis, true)
+
+  showMessagesInfo = (text, millis) ->
+    doShowMessagesInfo(text, millis, false)
+
+  doShowMessagesInfo = (text, millis, replaceContent) ->
+    if replaceContent
+      messages().html("")
+    if messagesInfo().length
+      messagesInfo().html(text)
+    else
+      elem = template.messagesInfo({text: text})
+      messages().prepend(elem)
+    if millis?
+      setTimeout () ->
+        messagesInfo().first().remove()
+      , millis
+
   topics().on 'click', '.subscribe', (event) ->
     event.preventDefault()
     el = $(event.target)
@@ -198,7 +223,7 @@ $ ->
     topics().find(".active").removeClass("active")
     el.addClass("active")
     currentTopicEl().html chatState.currentTopic
-    messages().html("Loading messages...")
+    showMessagesInfoOnly("Loading messages...")
 
   key_enter = 13
 
@@ -273,6 +298,10 @@ class ChatState
     @noMessages = true
     if @isLoadingInitialMessages?
       delete @isLoadingInitialMessages
+      if @newMessageArrivedWhileLoading?
+        delete @noMessages
+        delete @newMessageArrivedWhileLoading
+        delete @fastMessages
 
   getDateToQueryOlder: () ->
     return @oldestMessageDate
@@ -281,6 +310,12 @@ class ChatState
     @isLoadingInitialMessages = true
     @currentTopic = topicName
     @oldestMessageDate = undefined
+    if @newMessageArrivedWhileLoading?
+      delete @newMessageArrivedWhileLoading
+    if @fastMessages?
+      delete @fastMessages
+    if @noMessages?
+      delete @noMessages
 
   mergeMessages: (initialMsgs, fastMsgs) ->
     msgs = [initialMsgs..., fastMsgs...]

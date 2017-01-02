@@ -78,11 +78,23 @@ class DBServiceImpl extends Actor with ActorLogging {
 
   val topicsTopic = conf.getString("my.special.string") + "topics"
   val messagesTopic = conf.getString("my.special.string") + "messages"
-  mediator ! Subscribe(topicsTopic, self)
-  mediator ! Subscribe(messagesTopic, self)
 
+  context.system.scheduler.scheduleOnce(0 seconds, self, "init")
 
-  def receive = LoggingReceive {
+  def receive = {
+    case "init" =>
+      reactiveMongoApi.database.onSuccess { case _ =>
+        mediator ! Subscribe(topicsTopic, self)
+        mediator ! Subscribe(messagesTopic, self)
+        context become basic
+      }
+    case IsDbUp =>
+      sender ! DbIsNotUpYet
+  }
+
+  def basic = LoggingReceive {
+    case IsDbUp =>
+      sender ! DbIsUp
     case c @ ChatMessageWithCreationDate(ChatMessage(topicName, _, _), _) => 
       for {
         messagesColl <- coll("messages")

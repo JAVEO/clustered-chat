@@ -69,13 +69,23 @@
                 <h3>Current topic: <span id="current-topic">---</span> </h3>
                 <div id="messages">
                 </div>
+
                 @handlebars("message-on-left-template") {
                   <div class="chat-msg row">
                     <div class="col-sm-2 col-xs-3">
                       <p class="comment-author bold">{{{user}}}</p>
                     </div>
                     <div class="col-sm-10 col-xs-7">
-                      <p >{{{message}}}</p>
+                      <p>{{{message}}}</p>
+                    </div>
+                  </div>
+                }
+                @handlebars("messages-info-template") {
+                  <div class="row">
+                    <div class="col-sm-2 col-xs-3">
+                    </div>
+                    <div class="col-sm-10 col-xs-7">
+                      <p class="messages-info">{{{text}}}</p>
                     </div>
                   </div>
                 }
