@@ -72,7 +72,7 @@ class DBServiceImpl extends Actor with ActorLogging {
     )
   }
 
-  implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Mongo
+  implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Mongo
 
   val mediator = DistributedPubSub(context.system).mediator
 

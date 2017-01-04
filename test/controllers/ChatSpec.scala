@@ -45,7 +45,7 @@ class ChatSpec extends PlaySpecification with Mockito {
       val john = "johnsmith"
       val chat = route(FakeRequest(GET, "/chat").withSession("user" -> john)).get
       status(chat) must equalTo(OK)
-      contentAsString(chat) must contain(s"User : $john")
+      contentAsString(chat) must contain(john)
     }
   }
 }

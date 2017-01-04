@@ -1,7 +1,5 @@
 package actors
 
-import actors.UserSocket.Message
-import actors.UserSocket.Message.messageReads
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Cancellable, Identify, ActorIdentity}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, Unsubscribe}
@@ -83,14 +81,27 @@ object UserSocket {
   case class SingleMessage(msg: ChatMessageWithCreationDate)
 
   object SingleMessage {
-
-    implicit val chatMessagesListWrites: Writes[SingleMessage] = new Writes[SingleMessage] {
+    implicit val singleMessageFormat = new Format[SingleMessage] {
       def writes(singleMessage: SingleMessage): JsValue = {
-        implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Web
+        implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Web
         Json.obj(
           "type" -> "message",
           "msg" -> singleMessage.msg
         )
+      }
+      def reads(json: JsValue) = {
+        if ((json \ "type").as[String] != "message") {
+          JsError()
+        } else {
+          val msg = (json \ "msg").as[JsObject]
+          implicit val mode = ChatMessageWithCreationDate.JsonConversionMode.Web
+          msg.validate[ChatMessageWithCreationDate] match {
+            case JsSuccess(c : ChatMessageWithCreationDate, _) =>
+              JsSuccess(SingleMessage(c))
+            case _ =>
+              JsError()
+          }
+        }
       }
     }
 
@@ -106,7 +117,7 @@ object UserSocket {
 
     implicit val chatMessagesListWrites: Writes[ChatMessagesListMessage] = new Writes[ChatMessagesListMessage] {
       def writes(chatMessages: ChatMessagesListMessage): JsValue = {
-        implicit val messageWriteMode = ChatMessageWithCreationDate.WriteMode.Web
+        implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Web
         Json.obj(
           "type" -> "messages",
           "messages" -> chatMessages.msgs,
@@ -226,7 +237,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
             context become waitingForMessages
           }
         case "message" =>
-          js.validate[Message](messageReads)
+          js.validate[UserSocket.Message]
             .map(message => (message.topic, Utility.escape(message.msg)))
             .foreach { case (topic, msg) => 
               val chatMessage = ChatMessage(topic, uid, msg).createdNow
@@ -234,7 +245,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
               mediator ! Publish(messagesTopic, chatMessage)
             }
         case "pager" =>
-          js.validate[PagerQuery](PagerQuery.pagerQueryFormat)
+          js.validate[PagerQuery]
             .foreach { q =>
               dbService ! q
               lastQuery = Some(q)
@@ -244,7 +255,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
             }
       }
     case c @ ChatMessageWithCreationDate(ChatMessage(topic, _, _), _) if isSubscribedTo(topic) =>
-      implicit val writeMode = ChatMessageWithCreationDate.WriteMode.Web
+      implicit val writeMode = ChatMessageWithCreationDate.JsonConversionMode.Web
       out ! Json.toJson(SingleMessage(c))
     case t : TopicNameMessage => out ! Json.toJson(t)
 

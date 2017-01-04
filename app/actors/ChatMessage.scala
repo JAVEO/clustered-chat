@@ -10,20 +10,20 @@ object ChatMessageWithCreationDate extends Helper {
 
   def create(topic: String, user: String, text: String, millis: Long) = new ChatMessageWithCreationDate(ChatMessage(topic, user, text), new java.util.Date(millis))
 
-  object WriteMode extends Enumeration {
+  object JsonConversionMode extends Enumeration {
     val Web, Mongo = Value
   }
 
-  implicit def chatMessageWrites(implicit mode: WriteMode.Value) = {
+  implicit def chatMessageWrites(implicit mode: JsonConversionMode.Value) = {
     new OWrites[ChatMessageWithCreationDate] {
       def writes(chatMessage: ChatMessageWithCreationDate): JsObject = mode match {
-        case WriteMode.Web => Json.obj(
+        case JsonConversionMode.Web => Json.obj(
             "topic" -> chatMessage.msg.topic,
             "user" -> chatMessage.msg.user,
             "text" -> multiLine(chatMessage.msg.text),
             "creationDate" -> chatMessage.creationDate.getTime)
 
-        case WriteMode.Mongo => Json.obj(
+        case JsonConversionMode.Mongo => Json.obj(
             "topic" -> chatMessage.msg.topic,
             "user" -> chatMessage.msg.user,
             "text" -> chatMessage.msg.text,
@@ -33,12 +33,22 @@ object ChatMessageWithCreationDate extends Helper {
     }
   }
 
-  implicit val chatMessageReads: Reads[ChatMessageWithCreationDate] = (
-      (JsPath \ "topic").read[String] and
-      (JsPath \ "user").read[String] and
-      (JsPath \ "text").read[String] and
-      (JsPath \ "creationDate" \ "$date").read[Long]
-    )(ChatMessageWithCreationDate.create _)
+  implicit def chatMessageReads(implicit mode: JsonConversionMode.Value): Reads[ChatMessageWithCreationDate] = mode match {
+    case JsonConversionMode.Web =>
+      (
+        (JsPath \ "topic").read[String] and
+        (JsPath \ "user").read[String] and
+        ((JsPath \ "text").read[String].map(unmultiLine _)) and
+        (JsPath \ "creationDate").read[Long]
+      )(ChatMessageWithCreationDate.create _)
+    case JsonConversionMode.Mongo =>
+      (
+        (JsPath \ "topic").read[String] and
+        (JsPath \ "user").read[String] and
+        (JsPath \ "text").read[String] and
+        (JsPath \ "creationDate" \ "$date").read[Long]
+      )(ChatMessageWithCreationDate.create _)
+  }
 
   implicit val orderingByDate: Ordering[ChatMessageWithCreationDate] = Ordering.by[ChatMessageWithCreationDate, java.util.Date](_.creationDate)
 
@@ -75,7 +85,33 @@ object ChatMessage extends Helper {
 trait Helper {
 
   protected def multiLine(text: String) = {
-    HtmlFormat.raw(text).body.replace("\n", "<br/>")
+    HtmlFormat.escape(text).body.replace("\n", "<br/>")
+  }
+
+  protected def unmultiLine(text: String) = {
+    val replaced = text.replace("<br/>", "\n")
+    unescape(replaced)
+  }
+  private def unescape(text: String): String = {
+    val builder = new StringBuilder
+    var i = 0
+    val escapes = Map[String, String](
+      "&lt;" -> "<",
+      "&gt;" -> ">",
+      "&quot;" -> "\"",
+      "&#x27;" -> "'",
+      "&amp;" -> "&")
+    while (i < text.length) {
+      for ((prefix, value) <- escapes if i < text.length && text.startsWith(prefix, i)) {
+        builder.append(value)
+        i += prefix.length
+      }
+      if (i < text.length) {
+        builder.append(text.charAt(i))
+        i += 1
+      }
+    }
+    return builder.toString
   }
 
 }
