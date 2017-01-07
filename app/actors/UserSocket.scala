@@ -3,11 +3,10 @@ package actors
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Cancellable, Identify, ActorIdentity}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, Unsubscribe}
-import play.api.libs.json.{Format, Writes, JsPath, JsValue, JsString, JsObject, JsArray, Json, JsNull, JsError, JsSuccess}
+import play.api.libs.json.{Format, Writes, Reads, JsPath, JsValue, JsString, JsObject, JsArray, Json, JsNull, JsError, JsSuccess}
 import play.twirl.api.HtmlFormat
 import play.api.libs.functional.syntax._
 
-import scala.xml.Utility
 import scala.concurrent.duration._
 
 import akka.cluster.Cluster
@@ -81,27 +80,22 @@ object UserSocket {
   case class SingleMessage(msg: ChatMessageWithCreationDate)
 
   object SingleMessage {
-    implicit val singleMessageFormat = new Format[SingleMessage] {
+    import ChatMessageWithCreationDate._
+    //implicit val mode = JsonConversionMode.Web
+    implicit def singleMessageWrites(implicit mode: JsonConversionMode.Value) = new Writes[SingleMessage] {
       def writes(singleMessage: SingleMessage): JsValue = {
-        implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Web
         Json.obj(
           "type" -> "message",
-          "msg" -> singleMessage.msg
+          "msg" -> Json.toJson(singleMessage.msg)
         )
       }
+    }
+    implicit def singleMessageReads(implicit mode: JsonConversionMode.Value) = new Reads[SingleMessage] {
       def reads(json: JsValue) = {
-        if ((json \ "type").as[String] != "message") {
-          JsError()
-        } else {
-          val msg = (json \ "msg").as[JsObject]
-          implicit val mode = ChatMessageWithCreationDate.JsonConversionMode.Web
-          msg.validate[ChatMessageWithCreationDate] match {
-            case JsSuccess(c : ChatMessageWithCreationDate, _) =>
-              JsSuccess(SingleMessage(c))
-            case _ =>
-              JsError()
-          }
-        }
+        for {
+          t <- (json \ "type").validate[String] if t == "message"
+          c <- (json \ "msg").validate[ChatMessageWithCreationDate]
+        } yield SingleMessage(c)
       }
     }
 
@@ -115,7 +109,7 @@ object UserSocket {
   object ChatMessagesListMessage {
     import PagerQuery._
 
-    implicit val chatMessagesListWrites: Writes[ChatMessagesListMessage] = new Writes[ChatMessagesListMessage] {
+    implicit val chatMessagesListFormat  = new Format[ChatMessagesListMessage] {
       def writes(chatMessages: ChatMessagesListMessage): JsValue = {
         implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Web
         Json.obj(
@@ -124,6 +118,15 @@ object UserSocket {
           "query" -> Json.toJson(chatMessages.query),
           "isLast" -> chatMessages.isLast
         )
+      }
+      def reads(json: JsValue) = {
+        implicit val mode = ChatMessageWithCreationDate.JsonConversionMode.Web
+        for {
+          t <-      (json \ "type").validate[String] if t == "messages"
+          msgs <-   (json \ "messages").validate[Seq[ChatMessageWithCreationDate]]
+          query <-  (json \ "query").validate[PagerQuery]
+          isLast <- (json \ "isLast").validate[Boolean]
+        } yield ChatMessagesListMessage(query, isLast, msgs)
       }
     }
 
@@ -176,7 +179,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
       context become waitingForInitialTopics
     case DbIsNotUpYet =>
       // do nothing, wait for the timeout
-    case IsDbUpTimeout(attemptsCount) if attemptsCount > 3 =>
+    case IsDbUpTimeout(attemptsCount) if attemptsCount > 2 =>
       out ! Json.obj("type" -> "init error")
     case IsDbUpTimeout(attemptsCount) =>
       dbService ! IsDbUp
@@ -238,7 +241,7 @@ class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) exten
           }
         case "message" =>
           js.validate[UserSocket.Message]
-            .map(message => (message.topic, Utility.escape(message.msg)))
+            .map(message => (message.topic, message.msg))
             .foreach { case (topic, msg) => 
               val chatMessage = ChatMessage(topic, uid, msg).createdNow
               mediator ! Publish(topic, chatMessage)

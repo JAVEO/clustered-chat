@@ -11,7 +11,7 @@ object ChatMessageWithCreationDate extends Helper {
   def create(topic: String, user: String, text: String, millis: Long) = new ChatMessageWithCreationDate(ChatMessage(topic, user, text), new java.util.Date(millis))
 
   object JsonConversionMode extends Enumeration {
-    val Web, Mongo = Value
+    val Web, Mongo, WebWithoutUnescaping = Value
   }
 
   implicit def chatMessageWrites(implicit mode: JsonConversionMode.Value) = {
@@ -39,6 +39,13 @@ object ChatMessageWithCreationDate extends Helper {
         (JsPath \ "topic").read[String] and
         (JsPath \ "user").read[String] and
         ((JsPath \ "text").read[String].map(unmultiLine _)) and
+        (JsPath \ "creationDate").read[Long]
+      )(ChatMessageWithCreationDate.create _)
+    case JsonConversionMode.WebWithoutUnescaping =>
+      (
+        (JsPath \ "topic").read[String] and
+        (JsPath \ "user").read[String] and
+        (JsPath \ "text").read[String] and
         (JsPath \ "creationDate").read[Long]
       )(ChatMessageWithCreationDate.create _)
     case JsonConversionMode.Mongo =>

@@ -18,10 +18,20 @@ import scala.concurrent.duration._
 import akka.cluster.Cluster
 
 import play.modules.reactivemongo._
+// <old>
+/*
 import reactivemongo.api.ReadPreference
 import reactivemongo.play.json._
 import reactivemongo.play.json.collection._
 import reactivemongo.bson.{BSONDocument, BSONDateTime }
+*/
+// </old>
+// <new>
+import reactivemongo.api.ReadPreference
+import play.modules.reactivemongo.json._
+import play.modules.reactivemongo.json.collection._
+import reactivemongo.bson.{BSONDocument, BSONDateTime }
+// </new>
 import extensions.SystemScoped
 import akka.actor.{ ActorSystem, Props, ActorRef, Extension, ExtensionId, ExtensionIdProvider, ExtendedActorSystem }
 import play.api.Play
@@ -92,7 +102,7 @@ class DBServiceImpl extends Actor with ActorLogging {
       sender ! DbIsNotUpYet
   }
 
-  def basic = LoggingReceive {
+  def basic = LoggingReceive (({
     case IsDbUp =>
       sender ! DbIsUp
     case c @ ChatMessageWithCreationDate(ChatMessage(topicName, _, _), _) => 
@@ -121,7 +131,7 @@ class DBServiceImpl extends Actor with ActorLogging {
           sndr ! NoTopicsFound
         case Success(topics) =>
           sndr ! TopicsListMessage(topics.map(_.name))
-        case Failure(_) =>
+        case Failure(err) =>
           sndr ! NoTopicsFound
       }
     case query @ PagerQuery(topic, direction, date) =>
@@ -150,5 +160,5 @@ class DBServiceImpl extends Actor with ActorLogging {
         case Failure(_) =>
           sndr ! NoMessagesFound(query)
       }
-  }
+  }): Receive)
 }
