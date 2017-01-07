@@ -20,14 +20,13 @@ libraryDependencies ++= Seq(
   "org.webjars" % "bootstrap" % "3.3.4",
   "org.webjars" % "font-awesome" % "4.7.0",
   "org.webjars" % "jquery" % "2.2.4",
-  "org.webjars" % "handlebars" % "4.0.2",
-  //"org.specs2" %% "specs2" % "2.3.12" % Test
-  specs2 % Test
+  "org.webjars" % "handlebars" % "4.0.2"//,
+
+  //specs2 % Test
 )
 
 resolvers ++= Seq(
   "scalaz-bintray" at "http://dl.bintray.com/scalaz/releases"
-  //, "Millhouse Bintray"  at "http://dl.bintray.com/themillhousegroup/maven"
 )
 
 LessKeys.compress in Assets := true
@@ -39,5 +38,4 @@ includeFilter in (Assets, LessKeys.less) := "*.less"
 concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 parallelExecution in Test := false
 
-//scalacOptions += "-Ylog-classpath"
 javaOptions in Test ++= Seq("-Dlogger.resource=logback-test.xml", "-Dconfig.resource=application.test.conf")
