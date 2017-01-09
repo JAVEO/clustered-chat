@@ -5,8 +5,7 @@ import akka.actor._
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, SubscribeAck, Subscribe}
 
-import com.github.athieriot.{EmbedConnection, CleanAfterExample
-}
+import com.github.athieriot.{EmbedConnection, CleanAfterExample}
 
 import reactivemongo.bson.{
     BSONDocumentWriter, BSONDocumentReader, Macros, document
@@ -14,7 +13,6 @@ import reactivemongo.bson.{
 
 import akka.testkit.TestProbe
 import org.specs2.mutable._
-import org.specs2.time.NoTimeConversions
 import play.api.libs.json._
 
 import scala.concurrent.duration._
@@ -39,21 +37,18 @@ object Util {
 
 class UserSocketSpec extends Specification
     with EmbedConnection
-    with CleanAfterExample
-    with NoTimeConversions {
+    with CleanAfterExample {
   import Util._
 
   val UserId = "user1"
-  //val conf = utilit.Conf.get
 
   sequential
 
   "A user socket" should {
     val topic = "chat"
 
-    "when there is no data: send \"no topics found\" at start" in new AkkaTestkitSpecs2Support {
+    "when there is no data: send \"no topics found\" at start" in new AkkaSpecsWithApp {
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
 
         browser.expectMsgPF(10 seconds) {
@@ -62,9 +57,8 @@ class UserSocketSpec extends Specification
         }
 
     }
-    "when there is no data: send \"no messages found\" when subscribed" in new AkkaTestkitSpecs2Support {
+    "when there is no data: send \"no messages found\" when subscribed" in new AkkaSpecsWithApp {
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
 
         browser.expectMsgPF(10 seconds) {
@@ -78,7 +72,7 @@ class UserSocketSpec extends Specification
         }
 
     }
-    "send chat message to all subscribers" in new AkkaTestkitSpecs2Support {
+    "send chat message to all subscribers" in new AkkaSpecsWithApp {
 
         val mediator = DistributedPubSub(system).mediator
 
@@ -87,7 +81,6 @@ class UserSocketSpec extends Specification
         val chatMember2 = TestProbe()
         mediator ! Subscribe(topic, chatMember1.ref)
         mediator ! Subscribe(topic, chatMember2.ref)
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props("user1", conf)(browser.ref), "userSocket")
         
         val message = "hello"
@@ -107,9 +100,8 @@ class UserSocketSpec extends Specification
         }
     }
 
-    "escape message text before sending to browser" in new AkkaTestkitSpecs2Support {
+    "escape message text before sending to browser" in new AkkaSpecsWithApp {
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
         val text = "There <is> 'important' \"thing\" to & do!\n"
         val escapedText = "There &lt;is&gt; &#x27;important&#x27; &quot;thing&quot; to &amp; do!<br/>"
@@ -140,9 +132,8 @@ class UserSocketSpec extends Specification
 
     }
 
-    "forward chat message to browser" in new AkkaTestkitSpecs2Support {
+    "forward chat message to browser" in new AkkaSpecsWithApp {
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
         val text = "There is important thing to do!"
         val chatMessage = ChatMessage(topic, UserId, text)
@@ -167,14 +158,13 @@ class UserSocketSpec extends Specification
 
     }
 
-    "send new topic to all users" in new AkkaTestkitSpecs2Support {
+    "send new topic to all users" in new AkkaSpecsWithApp {
 
         val mediator = DistributedPubSub(system).mediator
 
         val browser = TestProbe()
         val chatMember1 = TestProbe()
         val chatMember2 = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val topicsTopic = conf.getString("my.special.string") + "topics"
         mediator ! Subscribe(topicsTopic, chatMember1.ref)
         mediator ! Subscribe(topicsTopic, chatMember2.ref)
@@ -215,7 +205,7 @@ class UserSocketSpec extends Specification
     
     val messagesAsJsObjects: List[JsObject] = initialMessages.map(Json.toJson(_).as[JsObject])
 
-    "ignore a message with a wrong topic" in new AkkaTestkitSpecs2Support {
+    "ignore a message with a wrong topic" in new AkkaSpecsWithApp {
       
         def buildPartialFunc(uid: String, text: String): PartialFunction[Any, Boolean] = {
           case SingleMessage(ChatMessageWithCreationDate(ChatMessage(t, uid, msg), _)) if t == topic && uid == uid && msg == text =>
@@ -225,7 +215,6 @@ class UserSocketSpec extends Specification
         val mediator = DistributedPubSub(system).mediator
 
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props("user1", conf)(browser.ref), "userSocket")
 
         browser.expectMsgPF(10 seconds) {
@@ -253,9 +242,8 @@ class UserSocketSpec extends Specification
         browser.expectNoMsg(10 seconds)
 
     }
-    "when there is data: send initial messages when subscribed" in new AkkaTestkitSpecs2SupportWithData("messages" -> messagesAsJsObjects) {
+    "when there is data: send initial messages when subscribed" in new AkkaSpecsWithData("messages" -> messagesAsJsObjects) {
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
 
         browser.expectMsgPF(10 seconds) {
@@ -274,7 +262,7 @@ class UserSocketSpec extends Specification
         }
 
     }
-    "send new messages while waiting for initial ones" in new AkkaTestkitSpecs2SupportWithData("topics" -> topicsAsJsObjects) {
+    "send new messages while waiting for initial ones" in new AkkaSpecsWithData("topics" -> topicsAsJsObjects) {
         
         implicit val mode = ChatMessageWithCreationDate.JsonConversionMode.Web
 
@@ -292,7 +280,6 @@ class UserSocketSpec extends Specification
         val mediator = DistributedPubSub(system).mediator
 
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props("user1", conf)(browser.ref), "userSocket")
 
         val expectedData = Json.toJson(UserSocket.TopicsListMessage(topics))
@@ -318,10 +305,9 @@ class UserSocketSpec extends Specification
         browser.expectMsgPF(10 seconds)(buildPartialFunc(uid2, text2))
 
     }
-    "when there is data: send initial topics at start" in new AkkaTestkitSpecs2SupportWithData("topics" -> topicsAsJsObjects) {
+    "when there is data: send initial topics at start" in new AkkaSpecsWithData("topics" -> topicsAsJsObjects) {
 
         val browser = TestProbe()
-        val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
         val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
 
         val expectedData = Json.toJson(UserSocket.TopicsListMessage(topics))
@@ -335,8 +321,7 @@ class UserSocketSpec extends Specification
 }
 
 class UserSocketWithoutWorkingDbSpec
-    extends Specification 
-    with NoTimeConversions {
+    extends Specification {
   import Util._
 
   val UserId = "user1"
@@ -345,9 +330,8 @@ class UserSocketWithoutWorkingDbSpec
 
   "When DB is not working a user socket" should {
     val topic = "chat"
-    "send the error message" in new AkkaTestkitSpecs2Support {
+    "send the error message" in new AkkaSpecsWithApp {
       val browser = TestProbe()
-      val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
       val socket = system.actorOf(UserSocket.props(UserId, conf)(browser.ref), "userSocket")
 
       browser.expectMsgPF(15 seconds) {

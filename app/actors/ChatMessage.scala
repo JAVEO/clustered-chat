@@ -61,7 +61,11 @@ object ChatMessageWithCreationDate extends Helper {
 
 }
 
-case class ChatMessageWithCreationDate(msg: ChatMessage, creationDate: java.util.Date)
+case class ChatMessageWithCreationDate(msg: ChatMessage, creationDate: java.util.Date) {
+  override def toString() = {
+    s"${this.getClass.getName}(${msg}, ${creationDate} [${creationDate.getTime}])"
+  }
+}
 
 case class ChatMessage(topic: String, user: String, text: String) {
   def withCreationDate(date: java.util.Date) = ChatMessageWithCreationDate(this, date)

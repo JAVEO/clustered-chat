@@ -6,6 +6,7 @@ import org.specs2.mutable._
 import org.specs2.execute._
 import org.specs2.specification.Scope
 import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.Application
 import scala.concurrent.{ ExecutionContext, Future, Await }
 import scala.concurrent.duration._
 import play.api.libs.json.{Writes, JsObject, JsValue}
@@ -23,19 +24,27 @@ import reactivemongo.api.{ DefaultDB, MongoConnection, MongoDriver }
 import play.api.test.Helpers
 
 abstract class AkkaTestkitSpecs2Support extends TestKit(ActorSystem())
-  with Around
-  with ImplicitSender
-  //with Scope
-  {
+  with After
+  with ImplicitSender {
 
-  def app = {
-    val portNum = 2554
+  def after() = system.shutdown()
+}
+
+object AkkaSpecsWithApp {
+  def defaultApp = {
     new GuiceApplicationBuilder()
       .in(new java.io.File("conf/application.test.conf"))
       .in(play.api.Mode.Test)
-      .configure("akka.remote.netty.tcp.port" -> portNum)
+      .configure("akka.remote.netty.tcp.port" -> 2554)
       .build
   }
+}
+
+abstract class AkkaSpecsWithApp(app: Application = AkkaSpecsWithApp.defaultApp) extends TestKit(ActorSystem())
+  with Around
+  with ImplicitSender
+  with Scope
+  {
 
   override def around[T : AsResult](t: => T): Result = {
     before()
@@ -46,14 +55,26 @@ abstract class AkkaTestkitSpecs2Support extends TestKit(ActorSystem())
 
   def before() {}
   def after() = system.shutdown()
+
+  lazy val conf = play.api.Play.current.injector.instanceOf[play.api.Configuration]
 }
 
-abstract class AkkaTestkitSpecs2SupportWithData(
+object AkkaSpecsWithData {
+  class CouldNotInsertException(
+    message: String,
+    cause: java.lang.Throwable = null) extends java.lang.Exception(message, cause)
+}
+
+abstract class AkkaSpecsWithData(
   dataToInsert: Map[String, Seq[JsObject]],
+  app: Application = AkkaSpecsWithApp.defaultApp,
   durationToWaitForInserting: FiniteDuration = 5 seconds
-  ) extends AkkaTestkitSpecs2Support {
+  ) extends AkkaSpecsWithApp(app) {
+
+    import AkkaSpecsWithData._
 
     def this(couples: (String, Seq[JsObject])*) = this(couples.toMap)
+    def this(app: Application, couples: (String, Seq[JsObject])*) = this(couples.toMap, app)
 
     override def before {
       insertData()
@@ -112,4 +133,3 @@ abstract class AkkaTestkitSpecs2SupportWithData(
 
 }
 
-class CouldNotInsertException(message: String, cause: java.lang.Throwable = null) extends java.lang.Exception(message, cause)
