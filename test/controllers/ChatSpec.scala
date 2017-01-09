@@ -3,13 +3,10 @@ package controllers
 import akka.actor.ActorSystem
 import akka.stream.Materializer
 import org.specs2.mock.Mockito
-import org.specs2.mutable._
 import play.api.i18n.MessagesApi
 import play.api.test._
-import play.api.test.Helpers._
-import utilit.WithMyApplication
 
-class ChatSpec extends Specification with Mockito {
+class ChatSpec extends PlaySpecification with Mockito {
 
   val conf = utilit.Conf.get
   val mockMessagesApi = mock[MessagesApi]
@@ -25,7 +22,7 @@ class ChatSpec extends Specification with Mockito {
       redirectLocation(leave) must beSome.which(_ == "/")
     }
 
-    "redirect to chat after defining nickname" in new WithMyApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
+    "redirect to chat after defining nickname" in new WithApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
       val Mickey = "Mickey Mouse"
       val nickname = route(FakeRequest(POST, "/nickname").withFormUrlEncodedBody("nickname" -> Mickey)).get
       status(nickname) must equalTo(SEE_OTHER)
@@ -33,7 +30,7 @@ class ChatSpec extends Specification with Mockito {
       session(nickname).get("user") must beSome(Mickey)
     }
 
-    "bad request for empty nickname" in new WithMyApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
+    "bad request for empty nickname" in new WithApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
       val result = route(FakeRequest(POST, "/nickname").withFormUrlEncodedBody("nickname" -> "")).get
       status(result) must equalTo(BAD_REQUEST)
     }
@@ -44,7 +41,7 @@ class ChatSpec extends Specification with Mockito {
       redirectLocation(chat) must beSome.which(_ == "/")
     }
 
-    "open chat room" in new WithMyApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
+    "open chat room" in new WithApplication(app = FakeApplication(additionalConfiguration = additionalConf)) {
       val john = "johnsmith"
       val chat = route(FakeRequest(GET, "/chat").withSession("user" -> john)).get
       status(chat) must equalTo(OK)
