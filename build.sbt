@@ -42,4 +42,5 @@ includeFilter in (Assets, LessKeys.less) := "*.less"
 concurrentRestrictions in Global += Tags.limit(Tags.Test, 1)
 parallelExecution in Test := false
 
+testOptions in Test += Tests.Argument(TestFrameworks.Specs2, "sequential")
 javaOptions in Test ++= Seq("-Dlogger.resource=logback-test.xml", "-Dconfig.resource=application.test.conf")
