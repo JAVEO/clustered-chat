@@ -3,6 +3,7 @@ package actors
 import actors.UserSocket.Message
 import actors.UserSocket.Message.messageReads
 import actors.ChatMessageWithCreationDate._
+import util.SingleLoggingReceive
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.cluster.pubsub.DistributedPubSub
 import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, Unsubscribe}
@@ -18,20 +19,11 @@ import scala.concurrent.duration._
 import akka.cluster.Cluster
 
 import play.modules.reactivemongo._
-// <old>
-/*
-import reactivemongo.api.ReadPreference
-import reactivemongo.play.json._
-import reactivemongo.play.json.collection._
-import reactivemongo.bson.{BSONDocument, BSONDateTime }
-*/
-// </old>
-// <new>
 import reactivemongo.api.ReadPreference
 import play.modules.reactivemongo.json._
 import play.modules.reactivemongo.json.collection._
 import reactivemongo.bson.{BSONDocument, BSONDateTime }
-// </new>
+
 import extensions.SystemScoped
 import akka.actor.{ ActorSystem, Props, ActorRef, Extension, ExtensionId, ExtensionIdProvider, ExtendedActorSystem }
 import play.api.Play
@@ -42,13 +34,16 @@ object DBService extends SystemScoped {
   override lazy val instanceName = "db-service-actor"
 }
 
-case class Topic(name: String)
+object DBServiceUtil {
+  case class Topic(name: String)
 
-object Topic {
-  implicit val topicFormat = Json.format[Topic]
+  object Topic {
+    implicit val topicFormat = Json.format[Topic]
+  }
 }
 
 class DBServiceImpl extends Actor with ActorLogging {
+  import DBServiceUtil._
   import actors.UserSocket._
   import scala.concurrent.ExecutionContext.Implicits.global
 
@@ -60,9 +55,9 @@ class DBServiceImpl extends Actor with ActorLogging {
   def buildQuery(topic: String, date: Long, direction: PagerQuery.Direction.Value) : BSONDocument = {
     val op = direction match {
       case PagerQuery.Direction.Older =>
-        "$lt"
+        "$lte"
       case PagerQuery.Direction.Newer =>
-        "$gt"
+        "$gte"
     }
     return BSONDocument(
       "topic" -> topic,
@@ -102,7 +97,7 @@ class DBServiceImpl extends Actor with ActorLogging {
       sender ! DbIsNotUpYet
   }
 
-  def basic = LoggingReceive (({
+  def basic = SingleLoggingReceive {
     case IsDbUp =>
       sender ! DbIsUp
     case c @ ChatMessageWithCreationDate(ChatMessage(topicName, _, _), _) => 
@@ -136,6 +131,9 @@ class DBServiceImpl extends Actor with ActorLogging {
       }
     case query @ PagerQuery(topic, direction, date) =>
       import PagerQuery.limit
+      // we add one to limit because we query messages by date with "≥" ("gte"), not ">" ("gt")
+      // we add one second time because that's how we know if there are older messages in db than these
+      val limitWithAddition = limit + 2
       val sndr = sender
       val msgsFuture = for {
         messagesColl <- coll("messages")
@@ -143,7 +141,7 @@ class DBServiceImpl extends Actor with ActorLogging {
           .find(buildQuery(topic, date, direction))
           .sort(byDate(direction))
           .cursor[ChatMessageWithCreationDate]()
-          .collect[Array](limit + 1)
+          .collect[Array](limitWithAddition)
         sortedMessages = messages.sorted
       } yield sortedMessages
       
@@ -151,14 +149,15 @@ class DBServiceImpl extends Actor with ActorLogging {
         case Success(msgs) if msgs.isEmpty =>
           sndr ! NoMessagesFound(query)
         case Success(msgs) =>
-          val isLast = msgs.length < limit
-          val msgsToSend = if (isLast) msgs else query.direction match {
-            case PagerQuery.Direction.Newer => msgs.init
-            case PagerQuery.Direction.Older => msgs.tail
+          def withoutFarest(ms: Array[ChatMessageWithCreationDate]) = query.direction match {
+            case PagerQuery.Direction.Newer => ms.init
+            case PagerQuery.Direction.Older => ms.tail
           }
+          val isLast = msgs.length < limitWithAddition
+          val msgsToSend = if (isLast) msgs else withoutFarest(msgs)
           sndr ! ChatMessagesListMessage(query, isLast, msgsToSend)
         case Failure(_) =>
           sndr ! NoMessagesFound(query)
       }
-  }): Receive)
+  }
 }

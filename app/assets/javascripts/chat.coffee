@@ -250,6 +250,7 @@ class ChatState
   constructor: () ->
     @topicNames = {}
     @currentTopic = undefined
+    @oldestMessage = undefined
     @oldestMessageDate = undefined
 
   handleNewTopic: (info) ->
@@ -268,6 +269,7 @@ class ChatState
 
   handleNewMessage: (info) ->
     if @noMessages?
+      @oldestMessage = info.msg
       @oldestMessageDate = info.creationDate
       delete @noMessages
     if @isLoadingInitialMessages?
@@ -282,10 +284,16 @@ class ChatState
       msgs = this.mergeMessages(msgs, @fastMessages)
       delete @fastMessages
 
+    if not @isLoadingInitialMessages
+      [withoutLast..., last] = msgs
+      if shallowEquals(@oldestMessage, last)
+        msgs = withoutLast
+
     func(msgs)
 
     [first, ...] = info.messages
     if first?
+      @oldestMessage = first
       @oldestMessageDate = first.creationDate
     if @isLoadingInitialMessages?
       delete @isLoadingInitialMessages
@@ -309,7 +317,8 @@ class ChatState
   handleTopicChange: (topicName) ->
     @isLoadingInitialMessages = true
     @currentTopic = topicName
-    @oldestMessageDate = undefined
+    delete @oldestMessage
+    delete @oldestMessageDate
     if @newMessageArrivedWhileLoading?
       delete @newMessageArrivedWhileLoading
     if @fastMessages?
