@@ -2,18 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Reactive chat application with Play, Akka Distributed Data and Websockets</title>
+    <title>Reactive chat application with Play, Akka Cluster and Websockets</title>
 </head>
 <body>
 
 <div>
-    <h2>Reactive chat application with Play, Akka Distributed Data and Websockets</h2>
+    <h2>Reactive chat application with Play, Akka Cluster and Websockets</h2>
 
     <p>
         The purpose of this activator template is to illustrate how a horizontally scalable, reactive architecture with
         websockets can be implemented with use of <a href="http://tools.ietf.org/html/rfc6455">WebSockets</a> and <a
             href="http://akka.io/">Akka</a> with <a
-            href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">Akka Distributed Data</a>.
+            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a>.
     </p>
 </div>
 
@@ -63,13 +63,15 @@
         <li>Scala</li>
     </ul>
 
+    For persistence this application uses MongoDB with Play-ReactiveMongo.
+
     <p>
         Also an interesting challenge emerges when you decide to scale out your backend by adding server instances
         and require to maintain message distribution between these nodes ensuring their delivery to all clients,
         regardless of their connection to one particular cluster node.
 
         It turns out that such scenario can be handled by <a
-            href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">Akka Distributed Data</a> by enabling the distribution
+            href="http://doc.akka.io/docs/akka/2.4.0/common/cluster.html">Akka Cluster</a> by enabling the distribution
         of messages among server instances within the cluster.
     </p>
 
@@ -204,6 +206,47 @@
         Now you can define nicknames for all participants and start talking.
     </p>
 
+    <h3>MongoDB</h3>
+
+    <p>
+        This project uses MongoDB, it means that in order to run it, you need to have MongoDB available on address
+        "mongodb://localhost/" (the default mongo port is 27017).
+    </p>
+
+    <p>
+        You can go to MongoDB's official page and follow the installation instructions, or you can use Docker and 
+        create a container that runs MongoDB (see <a href="https://hub.docker.com/_/mongo/">docker hub</a>).
+    </p>
+
+    <p>
+        When you have docker running, installing MongoDB is as easy as issuing this command:
+        <pre>
+            docker run -p 27017:27017 --name clustered-chat-mongo -d mongo
+        </pre>
+    </p>
+
+    <p>
+        For example, when I installed Ubuntu 17.04, these two commands were enough to install Docker and create
+        a container with MongoDB:
+        <pre>
+            sudo apt install docker.io
+            sudo docker run -p 27017:27017 --name clustered-chat-mongo -d mongo
+        </pre>
+    </p>
+
+    <p>
+        You can run the tests even if you don't have MongoDB installed, because of using "embedded-mongodb" in testing.
+    </p>
+
+    <h3>The databases</h3>
+
+    <p>
+        Each cluster node runs its own MongoDB instance, we simulate it by including the port number in database name
+        (see the "mongodb.uri" setting in <a href="#code/conf/application.conf" class="shortcut">application.conf</a>
+        file). One node will write to mongodb database named "db9001", the second one will write to "db9002" and
+        you probably have already figured out the name of the third database.
+    </p>
+
     <h3>The mechanics</h3>
 
     <p>
@@ -216,104 +259,36 @@
         The <code>UserSocket</code> receives <code>play.api.libs.json.JSValue</code> messages from the user's
         browser, parses it and eventually publishes a <code>ChatMessage(topic: String, user: String, text: String)</code> (or <code>TopicNameMessage(topicName: String)</code> - indicating that a new topic was created).
 
-        Upon it's creation, a <code>UserSocket</code> registers to the <code>akka.cluster.ddata.Replicator</code> by sending a
-
-        <code>Subscribe</code> message with <code>GSetKey</code>, initialized with the name "topics".
-    </p>
-
-    <h4>Distributed Data Types</h4>
-    <p>
-        In this tutorial we use two of the <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Data_Types">data types</a> that Akka Distributed Data provides us with:
-        <ul>
-          <li>
-            <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Sets">GSet</a>. The "G" means "grow-only", we can't delete from it. We use <code>GSet</code>s to store the list of topics and to store messages for each topic.
-          </li>
-          <li>
-            <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html#Flags_and_Registers">LWWRegister</a>  - stores one value. LWW means "last write wins". We use it to store the last message in each topic.
-          </li>
-        </ul>
-        A bunch of distributed sets would be enough to build a chat, so why do we use <code>LWWRegister</code>s? The reason is that it simplifies the logic of the callback to the "new message" event. When <code>GSet</code> gets updated, it sends the whole set to subscribers, but we need only the new message, that's why we use <code>LWWRegister</code>.
-    </p>
-
-    <p>
-        Why not just use <code>LWWRegister</code>s? We need <code>GSet</code>s to make new users able to retrieve the list of topics and the list of messages for the selected topic; to put it another way, we need <code>GSet</code>s to store the history.
-    </p>
-
-    <p>
-        Let's consider the following scenario:
-        <ol>
-          <li>
-            First User checks in, creates two topics, writes a message in each of them and waits for the answer in the second topic.
-          </li>
-          <li>
-            Second User arrives, goes to the second topic and chats with First User.
-          </li>
-          <li>
-            Third User creates a topic, goes to the second topic, reads the conversation and writes "I'm glad I didn't miss anything".
-          </li>
-        </ol>
-        Here is how distributed objects represent this process:
-        <img src="tutorial/heap.gif"/>
-    </p>
-
-    <p>
-        As we can see, the topics list is represented by a GSet, and each topic is represented by a GSet paired with an LWWRegister.
-    </p>
-
-    <p>
-        To publish the message we perform two operations:
-        <ul>
-          <li>Add a message to the topic's GSet.</li>
-          <li>Store the message in the topic's LWWRegister.</li>
-        </ul>
-        The corresponding code is a bit verbose, so let's first have a look at the simplified version of it:
+        Upon it's creation, a <code>UserSocket</code> registers to the <code>DistributedPubSubMediator</code> by sending a
+        <code>Subscribe</code> message with topic name "topics".
+        This special topic is needed to give users ability to create topics and to inform all users about new topics.
+        <br> To publish the message we use:
         <pre>
-            replicator ! Update("the key to find the gset of the topic", ...) {
-              // how to update the gset
-            }
-            replicator ! Update("the key to find topic's lwwregister", ...) {
-              // how to update the register
-            }
+            mediator ! Publish(topic, ChatMessage(topic, uid, msg))
         </pre>
     </p>
 
     <p>
-        The code sends two <code>Update</code> messages to the <code>replicator</code>. When constructing the <code>Update</code> message, we initialize it with the key that the replicator will use to find the object, and with a function that does the updating.
-    </p>
-
-    <p>
-        Here is what the actual code looks like:
+        The <code>DistributedPubSub</code> and the <code>mediator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
+        It is a nice implementation of publish-subscribe communication style with named topics which uses actors Akka Routing under the hood to distribute messages in the cluster.
+        The use of this feature is very simplistic since message passing is done same way as to local Actors - it is location transparent. One just has to subscribe to a named topic to receive distributed messages.
+        This way, with use of <code>DistributedPubSub</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
+        In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>mediator</code> :
         <pre>
-            replicator ! Update(GSetKey[ChatMessage](topic), GSet.empty[ChatMessage], WriteLocal) {
-              _ + chatMessage
-            }
-            replicator ! Update(LWWRegisterKey[ChatMessage](topic + "-lwwreg"), LWWRegister[ChatMessage](null), WriteLocal) {
-              reg =&gt; reg.withValue(chatMessage)
-            }
+            val mediator = DistributedPubSub(context.system).mediator
+            mediator ! Subscribe(topicsTopic, self)
         </pre>
-    </p>
-
-
-    <p>
-        The <code>DistributedData</code> and the <code>replicator</code> Actor is used in the code to provide abstraction for message distribution between cluster nodes.
-        It is a nice implementation of publish-subscribe communication style with distributed objects which uses actors Akka Routing under the hood to distribute messages in the cluster.
-        The use of this feature is very simplistic since message passing is done same way as to local Actors - it is location transparent. One just has to subscribe to events to receive distributed messages.
-        This way, with use of <code>DistributedData</code> there is no concern, or little about clustered environment upon message passing from programmer's point of view.
-        In our template if you inspect the <code>UserSocket</code> Actor you will find that it subscribes to <code>replicator</code> :
-        <pre>
-            val replicator = DistributedData(context.system).replicator
-            ...
-            replicator ! Subscribe(topicsKey, self)
-        </pre>
-        When one of users creates a topic, his <code>UserSocket</code> will update a <code>GSet</code> that stores the topics. Since all users are subscribed to this event, the system will update this GSet for all users, and a new topic name will be shown in each user's browser page along with the "subscribe" button.
-        When a user clicks "subscribe", his <code>UserSocket</code> will send a <code>Subscribe</code> message to replicator (it first sends the <code>Get</code> message to get the history from GSet and then, when history arrives, it subscribes to LWWRegister). After that a user will communicate with others through the mediator by sending <code>Update</code> that update topic's GSet and LWWRegister with <code>ChatMessage</code> messages.
+        When one of users creates a topic, his <code>UserSocket</code> will send a <code>TopicNameMessage</code> to the mediator. The system will deliver this message to all users, and a new topic name will be shown in each user's browser page along with the "subscribe" button.
+        When a user clicks "subscribe", his <code>UserSocket</code> will send a <code>Subscribe</code> message to mediator. After that a user will communicate with others through the mediator by sending <code>ChatMessage</code> messages.
         The received ChatMessage is serialized and sent to <code>out</code>.
     </p>
 
     <p>
         For detailed information on this mechanism please check
-        <a href="http://doc.akka.io/docs/akka/2.4.12/scala/distributed-data.html">documentation</a>
-        on Akka web page.
+        <a href="http://doc.akka.io/docs/akka/2.4.0/scala/distributed-pub-sub.html#DistributedPubSub_Extension">documentation</a>
+        on Akka web page. Also take a look at Typesafe's
+        <a href="https://www.typesafe.com/activator/template/akka-clustering">activator template</a> for more example
+        use cases of <code>DistributedPubSub</code>.
     </p>
 
     <h3>A scenario of message distribution between nodes.</h3>
@@ -334,9 +309,9 @@
         <ol>
             <li>user <b>A</b> defines and sends a message, the corresponding <code>UserSocket</code> receives it</li>
             <li><b>A</b>'s <code>UserSocket</code> parses the message and sends to node <b>9001</b>'s
-                <code>Replicator</code>
+                <code>DistributedPubSubMediator</code>
             </li>
-            <li><code>Replicator</code> sends the message to all <code>UserSocket</code>
+            <li><code>DistributedPubSubMediator</code> sends the message to all <code>UserSocket</code>
                 cluster nodes (<b>9001</b>, <b>9002</b>, <b>9003</b>)
             </li>
             <li>eventually, each <code>UserSocket</code> sends a message to the browser where it is served to the
@@ -346,6 +321,58 @@
         <img src="tutorial/flow.png"/>
         <br/>
     </p>
+
+    <h3>Persistence.</h3>
+
+    <p>
+        The persistence is implemented in the <code>DBServiceImpl</code> Actor, it subscribes to <code>mediator</code>
+        to two special topics:
+        <pre>
+            val mediator = DistributedPubSub(context.system).mediator
+            ...
+            mediator ! Subscribe(topicsTopic, self)
+            mediator ! Subscribe(messagesTopic, self)
+        </pre>
+    </p>
+
+    <p>
+        These two topics are special because they are not chat topics that users see in their "topics" sidebar on the page.
+        When a user creates a new topic, the <code>UserSocket</code> Actor publishes it to topicsTopic. When a user posts a
+        message in a chat, the socket publishes it to two topics: the chat topic itself (that other sockets are subscribed to)
+        and to special <code>messagesTopic</code> topic, to which <code>DBServiceImpl</code> Actors are subscribed:
+        <pre>
+            mediator ! Publish(topic, chatMessage)
+            mediator ! Publish(messagesTopic, chatMessage)
+        </pre>
+    </p>
+
+    <p>
+        When a new message arrives, the <code>DBServiceImpl</code> Actor saves it in the database:
+        <pre>
+            case c : ChatMessageWithCreationDate =&gt;
+              for {
+                messagesColl &lt;- coll("messages")
+                result &lt;- messagesColl.insert(c)
+              } {
+                // do nothing
+              }
+        </pre>
+
+        The <code>coll</code> method returns a <code>play.modules.reactivemongo.json.collection.JSONCollection</code>
+        found by provided name. After retrieving the collection, we invoke the <code>insert</code> method.
+    </p>
+
+    <p>
+        What about retrieving data? Let's consider the simpler case of retrieving the topics list. The <code>find</code>
+        method expects a <code>play.api.libs.json.JsObject</code> that represents the query.  We retrieve all the 
+        topics from the database by passing an empty <code>JsObject</code> to the <code>find</code> method.
+        <pre>
+            val topicsFuture = for {
+              topicsColl &lt;- coll("topics")
+              topics &lt;- topicsColl.find(Json.obj()).cursor[Topic]().collect[List]()
+            } yield topics
+        </pre>
+    </p>
 </div>
 <div>
     <h2>Testing</h2>
@@ -353,7 +380,7 @@
     <p>
         You can also take a moment to examine the approach to testing, actors in particular.
         <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.
-        <code>UserSocketSpec</code> tests actor behaviour.
+        <code>UserSocketSpec</code> tests actor behaviour, and <code>DBSpec</code> tests DBService actor.
         The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a
             href="http://doc.akka.io/docs/akka/2.4.0/scala/testing.html">Akka akka-testkit</a> facilities
         including the TestProbe mocking class.
@@ -361,6 +388,64 @@
         The <code>expextMsg</code> method is used to assert message flow within the actor system in accordance with
         specification.
     </p>
+
+    <h3>Mocking and embedding the database in tests</h3>
+
+    <p>
+        When testing the communication with the database, you can either mock it or embed the real instance of it. This project
+        uses both approaches. There are two classes in <code>DBSpec.scala</code> file:
+        <ul>
+          <li>
+            <code>DBServiceWithMockedMongoSpec</code>
+          </li>
+          <li>
+            <code>DBServiceWithEmbeddedMongoSpec</code>
+          </li>
+        </ul>
+    </p>
+
+    <p>
+        We use mocks provided by <a href="https://github.com/themillhousegroup/play2-reactivemongo-mocks">
+        play2-reactivemongo-mocks</a> to simulate the initial delay in database availability and to test the cases when the
+        database is empty.
+    </p>
+
+    <p>
+        There is one caveat in <code>play2-reactivemongo-mocks</code> that prevents us from using it to test the cases
+        when we insert or fetch the data from the database. There is a method named <code>givenMongoFindOperatesOn</code>
+        that allows to specify the data which a mocked <code>JSONCollection</code> will be populated with.
+        But if you use that method, the mocked collection will only allow <code>JSObject</code>s as parameters of its methods.
+    </p>
+
+    <p>
+        It means that in our code in <code>DB.scala</code> we couldn't use the collection as follows:
+        <code>
+          result &lt;- topicsColl.insert(Topic(topicName))
+        </code>
+        The mocking framework demanded that we rewrite that piece of code to make it look like this:
+        <code>
+          result &lt;- topicsColl.insert(Json.asJson(Topic(topicName)))
+        </code>
+        Or to rewrite this:
+        <code>
+          topics &lt;- topicsColl.find(Json.obj()).cursor[Topic]().collect[List]()
+        </code>
+        ... to make look like this:
+        <code>
+          topics &lt;- topicsColl.find(Json.obj()).cursor[JsObject]().collect[List]()
+        </code>
+        That's why we embed MongoDB in those tests in which we assume that there is data in the database.
+    </p>
+
+    <p>
+        The classes in <code>com.github.athieriot</code> package in the <code>test</code> folder are from
+        <a href="https://github.com/athieriot/specs2-embedmongo">specs2-embedded-mongo</a> project. The project
+        uses an outdated version of <code>specs2</code>, which is not compatible with Play Framework version that
+        we use. There is a <a href="https://github.com/athieriot/specs2-embedmongo/pull/16">pull request</a>
+        that moves the <code>specs2-embedmongo</code> to a new version of <code>specs2</code>. Until it's accepted,
+        we can't rely on it and we have to embed its code in our project.
+    </p>
+
 </div>
 <div>
     <h2>Summary</h2>
