@@ -100,7 +100,7 @@ class DBServiceImpl extends Actor with ActorLogging {
   def basic = SingleLoggingReceive {
     case IsDbUp =>
       sender ! DbIsUp
-    case c @ ChatMessageWithCreationDate(ChatMessage(topicName, _, _), _) => 
+    case c : ChatMessageWithCreationDate => 
       for {
         messagesColl <- coll("messages")
         result <- messagesColl.insert(c)
