@@ -7,7 +7,7 @@ import scala.concurrent.{Await, Future}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration._
 
-import com.github.athieriot.util.ListDatabases
+import com.github.athieriot.util.RichMongoConnection._
 
 trait CleanAfterExample extends AfterEach {
   self: EmbedConnection =>
@@ -22,8 +22,7 @@ trait CleanAfterExample extends AfterEach {
   def after = {
     val conn = getConn
     val futureDropResults = for {
-      someDb <- conn.database("some_db")
-      dbNames <- someDb.command(ListDatabases)
+      dbNames <- conn.listDatabases()
       dbs <- Future.traverse(dbNames)(conn.database(_))
       drops <- Future.traverse(dbs)(_.drop())
     } yield {

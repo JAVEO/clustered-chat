@@ -12,6 +12,12 @@ trait EmbedConnection extends Specification {
   self: SpecificationLike =>
   isolated
 
+  def sequentialyIsolated: Arguments = args(isolated = true, sequential = true)
+
+  override def sequential: Arguments = args(isolated = false, sequential = true)
+
+  override def isolated: Arguments = args(isolated = true, sequential = false)
+
   //Override this method to personalize testing port
   def embedConnectionPort: Int = 12345
 
