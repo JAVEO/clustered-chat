@@ -16,7 +16,7 @@ import play.api.mvc.{Action, Controller, WebSocket}
 import scala.concurrent.Future
 
 @Singleton
-class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem, mat: Materializer) extends Controller with I18nSupport {
+class Chat @Inject()(conf: play.api.Configuration, val messagesApi: MessagesApi, system: ActorSystem, mat: Materializer) extends Controller with I18nSupport {
   val User = "user"
 
   implicit val implicitMaterializer: Materializer = mat
@@ -58,7 +58,7 @@ class Chat @Inject()(val messagesApi: MessagesApi, system: ActorSystem, mat: Mat
     Future.successful(request.session.get(User) match {
       case None => Left(Forbidden)
       case Some(uid) =>
-        Right(ActorFlow.actorRef(UserSocket.props(uid)))
+        Right(ActorFlow.actorRef(UserSocket.props(uid, conf)))
     })
   }
 }

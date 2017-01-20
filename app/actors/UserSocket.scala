@@ -1,33 +1,51 @@
 package actors
 
-import actors.UserSocket.Message
-import actors.UserSocket.Message.messageReads
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
-import akka.event.LoggingReceive
-import play.api.libs.json.{Writes, JsPath, JsValue, JsString, JsObject, JsArray, Json}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Cancellable, Identify, ActorIdentity}
+import akka.cluster.pubsub.DistributedPubSub
+import akka.cluster.pubsub.DistributedPubSubMediator.{Publish, Subscribe, Unsubscribe}
+import play.api.libs.json.{Format, Writes, Reads, JsPath, JsValue, JsString, JsObject, JsArray, Json, JsNull, JsError, JsSuccess}
+import play.twirl.api.HtmlFormat
 import play.api.libs.functional.syntax._
 
-import scala.xml.Utility
 import scala.concurrent.duration._
 
 import akka.cluster.Cluster
-import akka.cluster.ddata.DistributedData
-import akka.cluster.ddata.Replicator
-import akka.cluster.ddata.Replicator._
-import akka.cluster.ddata.GSet
-import akka.cluster.ddata.GSetKey
-import akka.cluster.ddata.LWWRegister
-import akka.cluster.ddata.LWWRegisterKey
+import util.SingleLoggingReceive
 
 object UserSocket {
-  def props(user: String)(out: ActorRef) = Props(new UserSocket(user, out))
-  def topicMsgKey(topic: String) = LWWRegisterKey[ChatMessage](topic + "-lwwreg")
+  def props(user: String, conf: play.api.Configuration)(out: ActorRef) = Props(new UserSocket(user, out, conf))
 
   case class Message(topic: String, msg: String)
 
   object Message {
     implicit val messageReads = Json.reads[Message]
   }
+
+  object PagerQuery {
+
+    val limit = 10
+
+    def initial(topic: String) = new PagerQuery(topic, Direction.Older, new java.util.Date().getTime)
+
+    object Direction extends Enumeration {
+      type Direction = Value
+      val Older, Newer = Value
+      def withLowercaseName(name: String) = this.withName(name.capitalize)
+    }
+
+    implicit val directionFormat = new Format[Direction.Value] {
+      def writes(d: Direction.Value) = JsString(d.toString.toLowerCase)
+      def reads(json: JsValue) = json match {
+        case JsNull => JsError()
+        case _ => JsSuccess(Direction.withLowercaseName(json.as[String]))
+      }
+    }
+
+    implicit val pagerQueryFormat = Json.format[PagerQuery]
+
+  }
+
+  case class PagerQuery(topic: String, direction: PagerQuery.Direction.Value, date: Long)
 
   case class TopicNameMessage(topicName: String)
 
@@ -49,118 +67,230 @@ object UserSocket {
       def writes(topicsListMessage: TopicsListMessage): JsValue = {
         Json.obj(
           "type" -> "topics",
-          "topics" -> JsArray(topicsListMessage.topics.map(JsString(_)))
+          "topics" -> JsArray(
+            topicsListMessage.topics.map(name =>
+                Json.obj(
+                  "name" -> name,
+                  "id" -> name.hashCode)))
         )
       }
     }
   }
 
-  case class ChatMessagesListMessage(msgs: Seq[ChatMessage])
+  case class SingleMessage(msg: ChatMessageWithCreationDate)
+
+  object SingleMessage {
+    import ChatMessageWithCreationDate._
+    //implicit val mode = JsonConversionMode.Web
+    implicit def singleMessageWrites(implicit mode: JsonConversionMode.Value) = new Writes[SingleMessage] {
+      def writes(singleMessage: SingleMessage): JsValue = {
+        Json.obj(
+          "type" -> "message",
+          "msg" -> Json.toJson(singleMessage.msg)
+        )
+      }
+    }
+    implicit def singleMessageReads(implicit mode: JsonConversionMode.Value) = new Reads[SingleMessage] {
+      def reads(json: JsValue) = {
+        for {
+          t <- (json \ "type").validate[String] if t == "message"
+          c <- (json \ "msg").validate[ChatMessageWithCreationDate]
+        } yield SingleMessage(c)
+      }
+    }
+
+  }
+
+  case class ChatMessagesListMessage(
+    query: PagerQuery,
+    isLast: Boolean,
+    msgs: Seq[ChatMessageWithCreationDate])
 
   object ChatMessagesListMessage {
-    implicit val chatMessagesListWrites = new Writes[ChatMessagesListMessage] {
+    import PagerQuery._
+
+    implicit val chatMessagesListFormat  = new Format[ChatMessagesListMessage] {
       def writes(chatMessages: ChatMessagesListMessage): JsValue = {
+        implicit val messageWriteMode = ChatMessageWithCreationDate.JsonConversionMode.Web
         Json.obj(
           "type" -> "messages",
-          "messages" -> JsArray(chatMessages.msgs.map(Json.toJson(_)))
+          "messages" -> chatMessages.msgs,
+          "query" -> Json.toJson(chatMessages.query),
+          "isLast" -> chatMessages.isLast
         )
       }
+      def reads(json: JsValue) = {
+        implicit val mode = ChatMessageWithCreationDate.JsonConversionMode.Web
+        for {
+          t <-      (json \ "type").validate[String] if t == "messages"
+          msgs <-   (json \ "messages").validate[Seq[ChatMessageWithCreationDate]]
+          query <-  (json \ "query").validate[PagerQuery]
+          isLast <- (json \ "isLast").validate[Boolean]
+        } yield ChatMessagesListMessage(query, isLast, msgs)
+      }
     }
+
   }
+
+  case object GetTopics
+  case object NoTopicsFound
+  case class NoMessagesFound(query: PagerQuery)
+
+  case class MessagesPagerTimeout(query: PagerQuery)
+  case object InitialTopicsTimeout
+
+  case object IsDbUp
+  case class IsDbUpTimeout(attemptsCount: Int)
+  case object DbIsUp
+  case object DbIsNotUpYet
+  case class WakeUp(p: scala.concurrent.Promise[Int])
 }
 
-class UserSocket(uid: String, out: ActorRef) extends Actor with ActorLogging {
+class UserSocket(uid: String, out: ActorRef, conf: play.api.Configuration) extends Actor with ActorLogging {
   import UserSocket._
+  import scala.concurrent.ExecutionContext.Implicits.global
 
-  val topicsKey = GSetKey[String]("topics")
+  val topicsTopic = conf.getString("my.special.string") + "topics"
+  val messagesTopic = conf.getString("my.special.string") + "messages"
   var lastSubscribed: Option[String] = None
-  var initialHistory: Option[Set[ChatMessage]] = None
+  var topicToSubscribe: Option[String] = None
+  var scheduledTimeout: Option[Cancellable] = None
+  var lastQuery: Option[PagerQuery] = None
+  val dbService = DBService(context.system).instance
 
-  val replicator = DistributedData(context.system).replicator
+  val mediator = DistributedPubSub(context.system).mediator
   implicit val node = Cluster(context.system)
 
-  replicator ! Get(topicsKey, ReadMajority(timeout = 5.seconds))
+  context.system.scheduler.scheduleOnce(0 seconds, self, "init")
 
-  def receive = LoggingReceive {
-    case g @ GetSuccess(key, req) if key == topicsKey =>
-      val data = g.get(topicsKey).elements.toSeq
-      out ! Json.toJson(TopicsListMessage(data))
-      replicator ! Subscribe(topicsKey, self)
-      context become afterTopics
-    case NotFound(_, _) =>
-      replicator ! Subscribe(topicsKey, self)
-      context become afterTopics
-    case GetFailure(key, req) if key == topicsKey =>
-      replicator ! Get(topicsKey, ReadMajority(timeout = 5.seconds))
+  def receive = {
+    case "init" =>
+      dbService ! IsDbUp
+      scheduledTimeout = Some(
+        context.system.scheduler.scheduleOnce(3 seconds, self, IsDbUpTimeout(0)))
+      context become waitingForDbService
   }
 
-  def afterTopics = LoggingReceive {
-    case c @ Changed(key) if key == topicsKey =>
-      val data = c.get[GSet[String]](topicsKey).elements.toSeq
-      out ! Json.toJson(TopicsListMessage(data))
-    case c @ Changed(LWWRegisterKey(topic)) =>
-      for {
-        subscribedTopic <- lastSubscribed if (subscribedTopic + "-lwwreg").equals(topic)
-      } {
-        val chatMessage = c.get(LWWRegisterKey[ChatMessage](topic)).value
-        initialHistory foreach { historySet =>
-          if (!historySet(chatMessage))
-            out ! Json.toJson(chatMessage)
-        }
+  def waitingForDbService = SingleLoggingReceive {
+    case DbIsUp =>
+      dbService ! GetTopics
+      cancelTimeout()
+      scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, InitialTopicsTimeout))
+      context become waitingForInitialTopics
+    case DbIsNotUpYet =>
+      // do nothing, wait for the timeout
+    case IsDbUpTimeout(attemptsCount) if attemptsCount > 2 =>
+      out ! Json.obj("type" -> "init error")
+    case IsDbUpTimeout(attemptsCount) =>
+      dbService ! IsDbUp
+      scheduledTimeout = Some(context.system.scheduler.scheduleOnce(
+          3 seconds, self, IsDbUpTimeout(attemptsCount + 1)))
+  }
+
+  val waitingForInitialTopics = SingleLoggingReceive {
+    case t : TopicsListMessage =>
+      cancelTimeout()
+      mediator ! Subscribe(topicsTopic, self)
+      out ! Json.toJson(t)
+      context become basic
+    case NoTopicsFound =>
+      cancelTimeout()
+      mediator ! Subscribe(topicsTopic, self)
+      out ! Json.obj("type" -> "no topics found")
+      context become basic
+    case InitialTopicsTimeout =>
+      mediator ! Subscribe(topicsTopic, self)
+      out ! Json.obj("type" -> "initial topics timeout")
+      context become basic
+  } orElse basic
+
+  def waitingForMessages = SingleLoggingReceive {
+    case c : ChatMessagesListMessage if lastQuery == Some(c.query) =>
+      cancelTimeout()
+      sleep(3 seconds) onComplete { case _ =>
+        out ! Json.toJson(c)
+        context become basic
       }
-    case g @ GetSuccess(GSetKey(topic), req) =>
-      for {
-        subscribedTopic <- lastSubscribed if subscribedTopic.equals(topic)
-      } {
-        val elements = g.get(GSetKey[ChatMessage](topic)).elements
-        initialHistory = Some(elements)
-        val data = elements.toSeq.sortWith(_.created.getTime < _.created.getTime)
-        out ! Json.toJson(ChatMessagesListMessage(data))
-        replicator ! Subscribe(topicMsgKey(topic), self)
+    case NoMessagesFound(q) if lastQuery == Some(q) =>
+      cancelTimeout()
+      sleep(10 seconds) onComplete { case _ =>
+        out ! Json.obj("type" -> "no messages found")
+        context become basic
       }
-    case g @ NotFound(GSetKey(topic), req) =>
-      for {
-        subscribedTopic <- lastSubscribed if subscribedTopic.equals(topic)
-      } {
-        initialHistory = Some(Set.empty[ChatMessage])
-        replicator ! Subscribe(topicMsgKey(topic), self)
-      }
-    case g @ GetFailure(GSetKey(topic), req) =>
-      for {
-        subscribedTopic <- lastSubscribed if subscribedTopic.equals(topic)
-      } {
-        initialHistory = Some(Set.empty[ChatMessage])
-        replicator ! Subscribe(key = topicMsgKey(topic), self)
-      }
-    case JsString(topicName) => 
-      replicator ! Update(topicsKey, GSet.empty[String], WriteLocal) {
-        set => set + topicName
-      }
-      replicator ! FlushChanges
+    case MessagesPagerTimeout(q) if lastQuery == Some(q) =>
+      out ! Json.obj("type" -> "messages pager timeout")
+      context become basic
+  } orElse basic
+
+  def basic: Actor.Receive = SingleLoggingReceive {
+    case JsString(topicName) => mediator ! Publish(topicsTopic, TopicNameMessage(topicName))
     case js: JsValue =>
       ((js \ "type").as[String]) match {
         case "subscribe" =>
           val topic = (js \ "topic").as[String]
           if (topic != null) {
-            lastSubscribed foreach { oldTopic =>
-              replicator ! Unsubscribe(topicMsgKey(oldTopic), self)
-            }
-            lastSubscribed = Some(topic)
-            replicator ! Get(GSetKey(topic), ReadMajority(timeout = 5.seconds))
+            unsubscribe()
+            topicToSubscribe = Some(topic)
+            subscribeToTopic()
+            val query = PagerQuery.initial(topic)
+            lastQuery = Some(query)
+            dbService ! query
+            cancelTimeout()
+            scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout(query)))
+            context become waitingForMessages
           }
         case "message" =>
-          js.validate[Message](messageReads)
-            .map(message => (message.topic, Utility.escape(message.msg)))
+          js.validate[UserSocket.Message]
+            .map(message => (message.topic, message.msg))
             .foreach { case (topic, msg) => 
-              val chatMessage = ChatMessage(topic, uid, msg, new java.util.Date())
-              replicator ! Update(GSetKey[ChatMessage](topic), GSet.empty[ChatMessage], WriteLocal) {
-                _ + chatMessage
-              }
-              replicator ! Update(topicMsgKey(topic), LWWRegister[ChatMessage](null), WriteLocal) {
-                reg => reg.withValue(chatMessage)
-              }
-              replicator ! FlushChanges
+              val chatMessage = ChatMessage(topic, uid, msg).createdNow
+              mediator ! Publish(topic, chatMessage)
+              mediator ! Publish(messagesTopic, chatMessage)
+            }
+        case "pager" =>
+          js.validate[PagerQuery]
+            .foreach { q =>
+              dbService ! q
+              lastQuery = Some(q)
+              cancelTimeout()
+              scheduledTimeout = Some(context.system.scheduler.scheduleOnce(3 seconds, self, MessagesPagerTimeout(q)))
+              context become waitingForMessages
             }
       }
+    case c @ ChatMessageWithCreationDate(ChatMessage(topic, _, _), _) if isSubscribedTo(topic) =>
+      implicit val writeMode = ChatMessageWithCreationDate.JsonConversionMode.Web
+      out ! Json.toJson(SingleMessage(c))
+    case t : TopicNameMessage => out ! Json.toJson(t)
+
+    case WakeUp(p) => p.success(42)
+  }
+
+  def isSubscribedTo(topic: String): Boolean = lastSubscribed match {
+    case None => false
+    case Some(subscribedTopic) => subscribedTopic == topic
+  }
+
+  def unsubscribe() {
+    lastSubscribed foreach { oldTopic =>
+      mediator ! Unsubscribe(oldTopic, self)
+    }
+    lastSubscribed = None
+  }
+
+  def subscribeToTopic() {
+    topicToSubscribe foreach { topic =>
+      mediator ! Subscribe(topic, self)
+      lastSubscribed = Some(topic)
+    }
+  }
+
+  def cancelTimeout() {
+    scheduledTimeout.foreach(_.cancel())
+  }
+
+  def sleep(d: FiniteDuration) = {
+    val p = scala.concurrent.Promise[Int]()
+    context.system.scheduler.scheduleOnce(d, self, WakeUp(p))
+    p.future
   }
 }

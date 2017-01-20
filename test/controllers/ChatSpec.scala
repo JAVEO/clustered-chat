@@ -8,10 +8,11 @@ import play.api.test._
 
 class ChatSpec extends PlaySpecification with Mockito {
 
+  val conf = utilit.Conf.get
   val mockMessagesApi = mock[MessagesApi]
   val mockActorSystem = mock[ActorSystem]
   val mockMaterializer = mock[Materializer]
-  val app = new Chat(mockMessagesApi, mockActorSystem, mockMaterializer)
+  val app = new Chat(conf, mockMessagesApi, mockActorSystem, mockMaterializer)
   val additionalConf = Map("play.crypto.secret" -> "_Zgs2h=lF1BuKGAUNb5bsL<nQ62H=4xWYlcOT;NEmepkbjdb9PFl;hJ0ZzG/YkD=")
 
   "Chat" should {
@@ -44,7 +45,7 @@ class ChatSpec extends PlaySpecification with Mockito {
       val john = "johnsmith"
       val chat = route(FakeRequest(GET, "/chat").withSession("user" -> john)).get
       status(chat) must equalTo(OK)
-      contentAsString(chat) must contain(s"User : $john")
+      contentAsString(chat) must contain(john)
     }
   }
 }

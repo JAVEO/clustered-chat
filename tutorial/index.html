@@ -63,6 +63,8 @@
         <li>Scala</li>
     </ul>
 
+    For persistence this application uses MongoDB with Play-ReactiveMongo.
+
     <p>
         Also an interesting challenge emerges when you decide to scale out your backend by adding server instances
         and require to maintain message distribution between these nodes ensuring their delivery to all clients,
@@ -204,6 +206,47 @@
         Now you can define nicknames for all participants and start talking.
     </p>
 
+    <h3>MongoDB</h3>
+
+    <p>
+        This project uses MongoDB, it means that in order to run it, you need to have MongoDB available on address
+        "mongodb://localhost/" (the default mongo port is 27017).
+    </p>
+
+    <p>
+        You can go to MongoDB's official page and follow the installation instructions, or you can use Docker and 
+        create a container that runs MongoDB (see <a href="https://hub.docker.com/_/mongo/">docker hub</a>).
+    </p>
+
+    <p>
+        When you have docker running, installing MongoDB is as easy as issuing this command:
+        <pre>
+            docker run -p 27017:27017 --name clustered-chat-mongo -d mongo
+        </pre>
+    </p>
+
+    <p>
+        For example, when I installed Ubuntu 17.04, these two commands were enough to install Docker and create
+        a container with MongoDB:
+        <pre>
+            sudo apt install docker.io
+            sudo docker run -p 27017:27017 --name clustered-chat-mongo -d mongo
+        </pre>
+    </p>
+
+    <p>
+        You can run the tests even if you don't have MongoDB installed, because of using "embedded-mongodb" in testing.
+    </p>
+
+    <h3>The databases</h3>
+
+    <p>
+        Each cluster node runs its own MongoDB instance, we simulate it by including the port number in database name
+        (see the "mongodb.uri" setting in <a href="#code/conf/application.conf" class="shortcut">application.conf</a>
+        file). One node will write to mongodb database named "db9001", the second one will write to "db9002" and
+        you probably have already figured out the name of the third database.
+    </p>
+
     <h3>The mechanics</h3>
 
     <p>
@@ -278,6 +321,58 @@
         <img src="tutorial/flow.png"/>
         <br/>
     </p>
+
+    <h3>Persistence.</h3>
+
+    <p>
+        The persistence is implemented in the <code>DBServiceImpl</code> Actor, it subscribes to <code>mediator</code>
+        to two special topics:
+        <pre>
+            val mediator = DistributedPubSub(context.system).mediator
+            ...
+            mediator ! Subscribe(topicsTopic, self)
+            mediator ! Subscribe(messagesTopic, self)
+        </pre>
+    </p>
+
+    <p>
+        These two topics are special because they are not chat topics that users see in their "topics" sidebar on the page.
+        When a user creates a new topic, the <code>UserSocket</code> Actor publishes it to topicsTopic. When a user posts a
+        message in a chat, the socket publishes it to two topics: the chat topic itself (that other sockets are subscribed to)
+        and to special <code>messagesTopic</code> topic, to which <code>DBServiceImpl</code> Actors are subscribed:
+        <pre>
+            mediator ! Publish(topic, chatMessage)
+            mediator ! Publish(messagesTopic, chatMessage)
+        </pre>
+    </p>
+
+    <p>
+        When a new message arrives, the <code>DBServiceImpl</code> Actor saves it in the database:
+        <pre>
+            case c : ChatMessageWithCreationDate =&gt;
+              for {
+                messagesColl &lt;- coll("messages")
+                result &lt;- messagesColl.insert(c)
+              } {
+                // do nothing
+              }
+        </pre>
+
+        The <code>coll</code> method returns a <code>play.modules.reactivemongo.json.collection.JSONCollection</code>
+        found by provided name. After retrieving the collection, we invoke the <code>insert</code> method.
+    </p>
+
+    <p>
+        What about retrieving data? Let's consider the simpler case of retrieving the topics list. The <code>find</code>
+        method expects a <code>play.api.libs.json.JsObject</code> that represents the query.  We retrieve all the 
+        topics from the database by passing an empty <code>JsObject</code> to the <code>find</code> method.
+        <pre>
+            val topicsFuture = for {
+              topicsColl &lt;- coll("topics")
+              topics &lt;- topicsColl.find(Json.obj()).cursor[Topic]().collect[List]()
+            } yield topics
+        </pre>
+    </p>
 </div>
 <div>
     <h2>Testing</h2>
@@ -285,7 +380,7 @@
     <p>
         You can also take a moment to examine the approach to testing, actors in particular.
         <code>ChatMessageSpec</code> test verifies serialization to JSON of <code>ChatMessage</code>s.
-        <code>UserSocketSpec</code> tests actor behaviour.
+        <code>UserSocketSpec</code> tests actor behaviour, and <code>DBSpec</code> tests DBService actor.
         The tests are based on <a href="https://etorreborre.github.io/specs2/">Specs2</a> and <a
             href="http://doc.akka.io/docs/akka/2.4.0/scala/testing.html">Akka akka-testkit</a> facilities
         including the TestProbe mocking class.
@@ -293,6 +388,64 @@
         The <code>expextMsg</code> method is used to assert message flow within the actor system in accordance with
         specification.
     </p>
+
+    <h3>Mocking and embedding the database in tests</h3>
+
+    <p>
+        When testing the communication with the database, you can either mock it or embed the real instance of it. This project
+        uses both approaches. There are two classes in <code>DBSpec.scala</code> file:
+        <ul>
+          <li>
+            <code>DBServiceWithMockedMongoSpec</code>
+          </li>
+          <li>
+            <code>DBServiceWithEmbeddedMongoSpec</code>
+          </li>
+        </ul>
+    </p>
+
+    <p>
+        We use mocks provided by <a href="https://github.com/themillhousegroup/play2-reactivemongo-mocks">
+        play2-reactivemongo-mocks</a> to simulate the initial delay in database availability and to test the cases when the
+        database is empty.
+    </p>
+
+    <p>
+        There is one caveat in <code>play2-reactivemongo-mocks</code> that prevents us from using it to test the cases
+        when we insert or fetch the data from the database. There is a method named <code>givenMongoFindOperatesOn</code>
+        that allows to specify the data which a mocked <code>JSONCollection</code> will be populated with.
+        But if you use that method, the mocked collection will only allow <code>JSObject</code>s as parameters of its methods.
+    </p>
+
+    <p>
+        It means that in our code in <code>DB.scala</code> we couldn't use the collection as follows:
+        <code>
+          result &lt;- topicsColl.insert(Topic(topicName))
+        </code>
+        The mocking framework demanded that we rewrite that piece of code to make it look like this:
+        <code>
+          result &lt;- topicsColl.insert(Json.asJson(Topic(topicName)))
+        </code>
+        Or to rewrite this:
+        <code>
+          topics &lt;- topicsColl.find(Json.obj()).cursor[Topic]().collect[List]()
+        </code>
+        ... to make look like this:
+        <code>
+          topics &lt;- topicsColl.find(Json.obj()).cursor[JsObject]().collect[List]()
+        </code>
+        That's why we embed MongoDB in those tests in which we assume that there is data in the database.
+    </p>
+
+    <p>
+        The classes in <code>com.github.athieriot</code> package in the <code>test</code> folder are from
+        <a href="https://github.com/athieriot/specs2-embedmongo">specs2-embedded-mongo</a> project. The project
+        uses an outdated version of <code>specs2</code>, which is not compatible with Play Framework version that
+        we use. There is a <a href="https://github.com/athieriot/specs2-embedmongo/pull/16">pull request</a>
+        that moves the <code>specs2-embedmongo</code> to a new version of <code>specs2</code>. Until it's accepted,
+        we can't rely on it and we have to embed its code in our project.
+    </p>
+
 </div>
 <div>
     <h2>Summary</h2>
